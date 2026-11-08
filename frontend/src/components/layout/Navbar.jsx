@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Menu, LogOut, User, Wheat } from 'lucide-react';
+import { Bell, Menu, LogOut, User, Wheat, Settings } from 'lucide-react';
 import { useState } from 'react';
 import useAuthStore from '../../store/authStore';
 import useNotificationStore from '../../store/notificationStore';
@@ -71,9 +71,23 @@ const Navbar = ({ onMenuClick }) => {
                 <p className="text-sm font-medium">{user?.name}</p>
                 <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
               </div>
+              <Link
+                to="/profile"
+                onClick={() => setShowUserMenu(false)}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+              >
+                <Settings size={16} /> Profile Settings
+              </Link>
+              <Link
+                to="/notifications"
+                onClick={() => setShowUserMenu(false)}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+              >
+                <Bell size={16} /> All Notifications
+              </Link>
               <button
                 onClick={handleLogout}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-gray-100"
               >
                 <LogOut size={16} /> Logout
               </button>

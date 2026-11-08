@@ -10,7 +10,7 @@ const router = express.Router();
 // GET /api/equipment — public
 router.get('/', async (req, res, next) => {
   try {
-    const { category, location, minRate, maxRate, status = 'available', page = 1, limit = 12, search } = req.query;
+    const { category, location, minRate, maxRate, status, page = 1, limit = 12, search } = req.query;
     const where = {};
 
     if (status) where.status = status;

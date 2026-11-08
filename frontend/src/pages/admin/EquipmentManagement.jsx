@@ -13,7 +13,7 @@ const EquipmentManagement = () => {
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-equipment'],
-    queryFn: () => getEquipment({ limit: 50, status: undefined }).then((r) => r.data),
+    queryFn: () => getEquipment({ limit: 50 }).then((r) => r.data),
   });
 
   const deleteMutation = useMutation({
