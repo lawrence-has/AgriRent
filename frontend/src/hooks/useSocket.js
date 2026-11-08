@@ -29,7 +29,7 @@ const useSocket = () => {
 
     socketInstance.on('notification', (notification) => {
       addNotification(notification);
-      toast(notification.title, { icon: '🔔' });
+      toast(notification.title);
     });
 
     socketInstance.on('new_message', (message) => {
@@ -37,9 +37,7 @@ const useSocket = () => {
     });
 
     socketInstance.on('message_notification', ({ senderName, preview }) => {
-      if (!activeConversation || activeConversation.id !== message?.senderId) {
-        toast(`💬 ${senderName}: ${preview}`);
-      }
+      toast(`${senderName}: ${preview}`);
     });
 
     socketInstance.on('connect_error', (err) => {

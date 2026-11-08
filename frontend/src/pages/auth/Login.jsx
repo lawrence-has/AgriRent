@@ -1,6 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import { Wheat } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { login } from '../../api/auth';
 import useAuthStore from '../../store/authStore';
@@ -26,7 +27,11 @@ const Login = () => {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-green-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <span className="text-5xl">🌾</span>
+          <div className="flex justify-center mb-3">
+            <div className="bg-primary-100 p-4 rounded-full">
+              <Wheat size={36} className="text-primary-600" />
+            </div>
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mt-2">AgriRent</h1>
           <p className="text-gray-500 text-sm mt-1">Sign in to your account</p>
         </div>

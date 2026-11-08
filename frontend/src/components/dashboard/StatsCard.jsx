@@ -1,4 +1,4 @@
-const StatsCard = ({ title, value, icon, color = 'primary', subtitle }) => {
+const StatsCard = ({ title, value, icon: Icon, color = 'primary', subtitle }) => {
   const colors = {
     primary: 'bg-primary-50 text-primary-700',
     blue: 'bg-blue-50 text-blue-700',
@@ -16,7 +16,7 @@ const StatsCard = ({ title, value, icon, color = 'primary', subtitle }) => {
           {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
         </div>
         <div className={`p-3 rounded-lg ${colors[color]}`}>
-          <span className="text-xl">{icon}</span>
+          {Icon && <Icon size={20} />}
         </div>
       </div>
     </div>

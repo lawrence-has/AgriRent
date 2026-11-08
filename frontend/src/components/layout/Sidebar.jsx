@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Tractor, CalendarDays, ClipboardList,
-  Users, MessageSquare, Settings, X, BarChart3,
+  Users, MessageSquare, X, BarChart3, Wheat,
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 
@@ -48,7 +48,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       >
         {/* Mobile close button */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 lg:hidden">
-          <span className="font-semibold text-primary-600">🌾 AgriRent</span>
+          <span className="font-semibold text-primary-600 flex items-center gap-2"><Wheat size={18} /> AgriRent</span>
           <button onClick={onClose} className="p-1 rounded hover:bg-gray-100">
             <X size={20} />
           </button>

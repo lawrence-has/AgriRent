@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { differenceInDays, parseISO } from 'date-fns';
-import { MapPin, Phone } from 'lucide-react';
+import { MapPin, Phone, Tractor } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getEquipmentById } from '../../api/equipment';
 import { createReservation } from '../../api/reservations';
@@ -61,7 +61,9 @@ const EquipmentDetailPage = () => {
             {equipment.images?.[imgIdx] ? (
               <img src={equipment.images[imgIdx]} alt={equipment.name} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-6xl">🚜</div>
+              <div className="w-full h-full flex items-center justify-center text-gray-300">
+                <Tractor size={72} strokeWidth={1} />
+              </div>
             )}
           </div>
           {equipment.images?.length > 1 && (

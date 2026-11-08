@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { MapPin, Star } from 'lucide-react';
+import { MapPin, Tractor } from 'lucide-react';
 import Badge from '../common/Badge';
 
 const EquipmentCard = ({ equipment }) => {
@@ -11,7 +11,9 @@ const EquipmentCard = ({ equipment }) => {
         {image ? (
           <img src={image} alt={equipment.name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-4xl">🚜</div>
+          <div className="w-full h-full flex items-center justify-center text-gray-300">
+            <Tractor size={56} strokeWidth={1.2} />
+          </div>
         )}
         <div className="absolute top-2 right-2">
           <Badge label={equipment.status} />

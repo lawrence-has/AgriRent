@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Tractor } from 'lucide-react';
 import { getEquipment, createEquipment, updateEquipment, deleteEquipment } from '../../api/equipment';
 import useAuthStore from '../../store/authStore';
 import EquipmentForm from '../../components/equipment/EquipmentForm';
@@ -66,7 +66,7 @@ const MyEquipment = () => {
       </div>
 
       {!data?.length ? (
-        <EmptyState icon="🚜" title="No equipment yet" description="Add your first piece of equipment to start renting" />
+        <EmptyState icon={Tractor} title="No equipment yet" description="Add your first piece of equipment to start renting" />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {data.map((eq) => (
@@ -75,7 +75,9 @@ const MyEquipment = () => {
                 {eq.images?.[0] ? (
                   <img src={eq.images[0]} alt={eq.name} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-4xl">🚜</div>
+                  <div className="w-full h-full flex items-center justify-center text-gray-300">
+                    <Tractor size={48} strokeWidth={1.2} />
+                  </div>
                 )}
               </div>
               <div className="p-4">

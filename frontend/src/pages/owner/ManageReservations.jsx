@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { ClipboardList } from 'lucide-react';
 import { getReservations, updateReservation } from '../../api/reservations';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
@@ -31,7 +32,7 @@ const ManageReservations = () => {
       <h1 className="text-2xl font-bold text-gray-900">Manage Reservations</h1>
 
       {!data?.reservations?.length ? (
-        <EmptyState icon="📋" title="No reservations" description="Incoming reservation requests will appear here" />
+        <EmptyState icon={ClipboardList} title="No reservations" description="Incoming reservation requests will appear here" />
       ) : (
         <div className="space-y-3">
           {data.reservations.map((r) => (

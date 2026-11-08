@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Menu, LogOut, User } from 'lucide-react';
+import { Bell, Menu, LogOut, User, Wheat } from 'lucide-react';
 import { useState } from 'react';
 import useAuthStore from '../../store/authStore';
 import useNotificationStore from '../../store/notificationStore';
@@ -24,7 +24,7 @@ const Navbar = ({ onMenuClick }) => {
           <Menu size={20} />
         </button>
         <Link to="/" className="flex items-center gap-2">
-          <span className="text-2xl">🌾</span>
+          <Wheat size={24} className="text-primary-600" />
           <span className="text-xl font-bold text-primary-600">AgriRent</span>
         </Link>
       </div>

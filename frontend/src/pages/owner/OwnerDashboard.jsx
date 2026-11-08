@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Tractor, CheckCircle, Clock, Flag, DollarSign } from 'lucide-react';
 import { getOwnerStats } from '../../api/dashboard';
 import StatsCard from '../../components/dashboard/StatsCard';
 import RecentActivity from '../../components/dashboard/RecentActivity';
@@ -17,11 +18,11 @@ const OwnerDashboard = () => {
       <h1 className="text-2xl font-bold text-gray-900">Owner Dashboard</h1>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatsCard title="My Equipment" value={data?.totalEquipment || 0} icon="🚜" />
-        <StatsCard title="Active Rentals" value={data?.activeRentals || 0} icon="✅" color="green" />
-        <StatsCard title="Pending Requests" value={data?.pendingRequests || 0} icon="⏳" color="orange" />
-        <StatsCard title="Completed" value={data?.completedRentals || 0} icon="🏁" color="blue" />
-        <StatsCard title="Total Revenue" value={`₱${(data?.totalRevenue || 0).toLocaleString()}`} icon="💰" color="purple" />
+        <StatsCard title="My Equipment" value={data?.totalEquipment || 0} icon={Tractor} />
+        <StatsCard title="Active Rentals" value={data?.activeRentals || 0} icon={CheckCircle} color="green" />
+        <StatsCard title="Pending Requests" value={data?.pendingRequests || 0} icon={Clock} color="orange" />
+        <StatsCard title="Completed" value={data?.completedRentals || 0} icon={Flag} color="blue" />
+        <StatsCard title="Total Revenue" value={`₱${(data?.totalRevenue || 0).toLocaleString()}`} icon={DollarSign} color="purple" />
       </div>
 
       <RecentActivity reservations={data?.recentReservations || []} />

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
+import { ClipboardList } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getMyReservations, updateReservation } from '../../api/reservations';
 import Badge from '../../components/common/Badge';
@@ -37,7 +38,7 @@ const MyReservations = () => {
 
       {!data?.reservations?.length ? (
         <EmptyState
-          icon="📋"
+          icon={ClipboardList}
           title="No reservations yet"
           description="Browse available equipment to make your first reservation"
           action={<Button as={Link} to="/farmer/browse">Browse Equipment</Button>}

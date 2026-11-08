@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { MessageSquare } from 'lucide-react';
 import { getConversations } from '../../api/chat';
 import useChatStore from '../../store/chatStore';
 import ConversationList from '../../components/chat/ConversationList';
@@ -26,7 +27,7 @@ const ChatPage = () => {
           <h2 className="font-semibold">Messages</h2>
         </div>
         {!data?.length ? (
-          <EmptyState icon="💬" title="No conversations" description="Start chatting from a reservation" />
+          <EmptyState icon={MessageSquare} title="No conversations" description="Start chatting from a reservation" />
         ) : (
           <ConversationList conversations={data} activeId={activeConversation?.id} onSelect={setActiveConversation} />
         )}
@@ -37,7 +38,7 @@ const ChatPage = () => {
         {activeConversation ? (
           <ChatWindow partner={activeConversation} />
         ) : (
-          <EmptyState icon="💬" title="Select a conversation" description="Choose a contact to start messaging" />
+          <EmptyState icon={MessageSquare} title="Select a conversation" description="Choose a contact to start messaging" />
         )}
       </div>
     </div>

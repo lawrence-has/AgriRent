@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { Package } from 'lucide-react';
 import { getTransactions, releaseEquipment, returnEquipment } from '../../api/transactions';
 import { getReservations } from '../../api/reservations';
 import Badge from '../../components/common/Badge';
@@ -61,7 +62,7 @@ const ManageTransactions = () => {
 
       {txLoading ? <div className="py-20"><Spinner size="lg" /></div> :
         !txData?.transactions?.length ? (
-          <EmptyState icon="📦" title="No transactions yet" description="Confirm reservations and release equipment to start tracking" />
+          <EmptyState icon={Package} title="No transactions yet" description="Confirm reservations and release equipment to start tracking" />
         ) : (
           <div className="space-y-3">
             {txData.transactions.map((t) => (

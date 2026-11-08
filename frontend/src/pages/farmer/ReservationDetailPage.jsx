@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { MessageSquare } from 'lucide-react';
 import { getReservationById } from '../../api/reservations';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
@@ -59,8 +60,8 @@ const ReservationDetailPage = () => {
         </div>
       </div>
 
-      <Button as={Link} to={`/chat`} variant="outline" className="w-full">
-        💬 Message Equipment Owner
+      <Button as={Link} to={`/chat`} variant="outline" className="w-full flex items-center justify-center gap-2">
+        <MessageSquare size={16} /> Message Equipment Owner
       </Button>
     </div>
   );
