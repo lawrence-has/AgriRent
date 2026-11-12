@@ -50,15 +50,8 @@ const ChatPage = () => {
     const timer = setTimeout(async () => {
       setSearching(true);
       try {
-        // Search users by name — use existing users endpoint
-        const role = user?.role === 'farmer' ? 'owner' : 'farmer';
-        const res = await api.get('/users', { params: { limit: 20 } });
-        const filtered = res.data.users.filter(
-          (u) =>
-            u.id !== user?.id &&
-            u.name.toLowerCase().includes(userSearch.toLowerCase())
-        );
-        setSearchResults(filtered);
+        const res = await api.get('/users/search', { params: { q: userSearch, limit: 20 } });
+        setSearchResults(res.data.users);
       } catch {
         setSearchResults([]);
       } finally {

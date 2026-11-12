@@ -1,8 +1,34 @@
 const express = require('express');
+const { Op } = require('sequelize');
 const { User } = require('../models');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
+
+// GET /api/users/search — any authenticated user can search other users by name
+// Used by chat to find people to message
+router.get('/search', requireAuth, async (req, res, next) => {
+  try {
+    const { q = '', limit = 20 } = req.query;
+    const where = {
+      id: { [Op.ne]: req.user.id }, // exclude self
+    };
+    if (q.trim()) {
+      where.name = { [Op.like]: `%${q.trim()}%` };
+    }
+
+    const users = await User.findAll({
+      where,
+      attributes: ['id', 'name', 'role', 'profilePicture'],
+      limit: parseInt(limit),
+      order: [['name', 'ASC']],
+    });
+
+    res.json({ users });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // GET /api/users — admin only
 router.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {
