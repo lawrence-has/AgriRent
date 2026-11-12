@@ -19,11 +19,13 @@ const ChatWindow = ({ partner }) => {
   const { user } = useAuthStore();
   const bottomRef = useRef(null);
   const queryClient = useQueryClient();
-  const partnerOnline = onlineUserIds.includes(partner.id);
-  const partnerIdRef = useRef(partner.id);
+  const myId = Number(user?.id);
+  const partnerId = Number(partner.id);
+  const partnerOnline = onlineUserIds.includes(partnerId);
+  const partnerIdRef = useRef(partnerId);
 
-  // Keep ref in sync for use inside socket callbacks
-  useEffect(() => { partnerIdRef.current = partner.id; }, [partner.id]);
+  // Keep ref in sync
+  useEffect(() => { partnerIdRef.current = partnerId; }, [partnerId]);
 
   // ── Load message history ────────────────────────────────────────
   const { isLoading } = useQuery({
@@ -42,15 +44,15 @@ const ChatWindow = ({ partner }) => {
     const joinAndMark = () => {
       const socket = getSocket();
       if (!socket) return;
-      socket.emit('join_chat', { withUserId: partner.id });
-      socket.emit('mark_read', { withUserId: partner.id });
-      clearUnread(partner.id);
+      socket.emit('join_chat', { withUserId: partnerId });
+      socket.emit('mark_read', { withUserId: partnerId });
+      clearUnread(partnerId);
     };
     joinAndMark();
     const socket = getSocket();
     socket?.on('reconnect', joinAndMark);
     return () => socket?.off('reconnect', joinAndMark);
-  }, [partner.id]);
+  }, [partnerId]);
 
   // ── Direct socket listeners inside this chat window ────────────
   // These are separate from useSocket so messages appear INSTANTLY
@@ -65,18 +67,20 @@ const ChatWindow = ({ partner }) => {
     // Message arriving from the OTHER person
     const onNewMessage = (message) => {
       const pid = partnerIdRef.current;
+      const mid = Number(user?.id);
+      const senderId = Number(message.senderId);
+      const receiverId = Number(message.receiverId);
+
       const belongsHere =
-        (message.senderId === pid && message.receiverId === user?.id) ||
-        (message.receiverId === pid && message.senderId === user?.id);
+        (senderId === pid && receiverId === mid) ||
+        (receiverId === pid && senderId === mid);
       if (!belongsHere) return;
 
       setMessages((prev) => {
-        // avoid duplicate
         if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, message];
       });
 
-      // Mark as read immediately since chat is open
       socket.emit('mark_read', { withUserId: pid });
       clearUnread(pid);
     };
@@ -84,32 +88,33 @@ const ChatWindow = ({ partner }) => {
     // Server confirming OUR sent message (replaces temp optimistic)
     const onMessageSent = (message) => {
       const pid = partnerIdRef.current;
-      if (message.receiverId !== pid && message.senderId !== pid) return;
+      const receiverId = Number(message.receiverId);
+      const senderId = Number(message.senderId);
+      if (receiverId !== pid && senderId !== pid) return;
 
       setMessages((prev) => {
-        // Replace temp optimistic with real message
         const hasTemp = prev.some(
-          (m) => String(m.id).startsWith('temp_') &&
-            m.senderId === message.senderId &&
+          (m) =>
+            String(m.id).startsWith('temp_') &&
+            Number(m.senderId) === Number(message.senderId) &&
             m.message === message.message
         );
         if (hasTemp) {
           return prev.map((m) =>
             String(m.id).startsWith('temp_') &&
-            m.senderId === message.senderId &&
+            Number(m.senderId) === Number(message.senderId) &&
             m.message === message.message
               ? message
               : m
           );
         }
-        // If no temp found, append only if not duplicate
         if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, message];
       });
     };
 
     const onTyping = ({ fromUserId, isTyping }) => {
-      if (fromUserId === partnerIdRef.current) setPartnerTyping(isTyping);
+      if (Number(fromUserId) === partnerIdRef.current) setPartnerTyping(isTyping);
     };
 
     setSocketConnected(socket.connected);
@@ -126,7 +131,7 @@ const ChatWindow = ({ partner }) => {
       socket.off('message_sent', onMessageSent);
       socket.off('typing', onTyping);
     };
-  }, [partner.id, user?.id]);
+  }, [partnerId, myId]);
 
   // ── Auto-scroll on new messages ─────────────────────────────────
   useEffect(() => {
@@ -141,28 +146,24 @@ const ChatWindow = ({ partner }) => {
     const socket = getSocket();
 
     if (socket?.connected) {
-      // 1. Add optimistic message immediately — zero perceived latency
       const optimistic = {
         id: `temp_${Date.now()}`,
-        senderId: user.id,
-        receiverId: partner.id,
+        senderId: myId,
+        receiverId: partnerId,
         message: trimmed,
         isRead: false,
         createdAt: new Date().toISOString(),
-        sender: { id: user.id, name: user.name, profilePicture: user.profilePicture },
+        sender: { id: myId, name: user.name, profilePicture: user.profilePicture },
       };
       setMessages((prev) => [...prev, optimistic]);
-      // 2. Fire socket — server saves to DB and emits back as message_sent
-      socket.emit('send_message', { receiverId: partner.id, message: trimmed });
+      socket.emit('send_message', { receiverId: partnerId, message: trimmed });
       setText('');
-      // Stop typing indicator
       clearTimeout(typingTimer.current);
       isTypingRef.current = false;
-      socket.emit('typing', { toUserId: partner.id, isTyping: false });
+      socket.emit('typing', { toUserId: partnerId, isTyping: false });
     } else {
-      // Offline fallback via REST
       setSending(true);
-      sendMessageREST({ receiverId: partner.id, message: trimmed })
+      sendMessageREST({ receiverId: partnerId, message: trimmed })
         .then(({ data }) => {
           setMessages((prev) => [...prev, { ...data.message, sender: { id: user.id, name: user.name } }]);
           setText('');
@@ -171,7 +172,7 @@ const ChatWindow = ({ partner }) => {
         .catch(() => toast?.error?.('Failed to send'))
         .finally(() => setSending(false));
     }
-  }, [text, sending, partner.id, user]);
+  }, [text, sending, partnerId, myId, user]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -186,12 +187,12 @@ const ChatWindow = ({ partner }) => {
     if (!socket?.connected) return;
     if (!isTypingRef.current) {
       isTypingRef.current = true;
-      socket.emit('typing', { toUserId: partner.id, isTyping: true });
+      socket.emit('typing', { toUserId: partnerId, isTyping: true });
     }
     clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {
       isTypingRef.current = false;
-      socket.emit('typing', { toUserId: partner.id, isTyping: false });
+      socket.emit('typing', { toUserId: partnerId, isTyping: false });
     }, 1500);
   };
 
@@ -231,7 +232,7 @@ const ChatWindow = ({ partner }) => {
             <MessageBubble
               key={msg.id}
               message={msg}
-              isMine={msg.senderId === user?.id}
+              isMine={Number(msg.senderId) === myId}
             />
           ))
         )}

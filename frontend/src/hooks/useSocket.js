@@ -23,7 +23,7 @@ const useSocket = () => {
       socketInstance = null;
     }
 
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
     socketInstance = io(socketUrl, {
       auth: { token },

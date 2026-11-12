@@ -78,8 +78,6 @@ const initSocket = (io) => {
           },
         };
 
-        const roomId = getRoomId(userId, parseInt(receiverId));
-
         // 1. Emit to receiver's personal room — always works regardless of chat room
         io.to(`user_${receiverId}`).emit('new_message', payload);
 
@@ -89,11 +87,13 @@ const initSocket = (io) => {
         // 3. Confirm back to sender with the real DB message (replaces optimistic)
         socket.emit('message_sent', payload);
 
-        // 4. Notify receiver for toast/badge if they're not in the chat
+        // 4. Notify receiver for toast/badge — use a separate event so ChatWindow
+        //    can suppress it when the chat is already open
         io.to(`user_${receiverId}`).emit('message_notification', {
           senderId: userId,
           senderName: socket.user.name,
           preview: message.trim().substring(0, 60),
+          messageId: chatMessage.id,
         });
 
       } catch (err) {
