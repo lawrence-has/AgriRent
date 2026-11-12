@@ -18,7 +18,6 @@ const useSocket = () => {
   useEffect(() => {
     if (!token || !user) return;
 
-    // Disconnect stale socket if auth changed
     if (socketInstance) {
       socketInstance.disconnect();
       socketInstance = null;
@@ -31,9 +30,9 @@ const useSocket = () => {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 10000,
-      timeout: 20000,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
+      timeout: 10000,
     });
 
     socketInstance.on('connect', () => {
@@ -44,7 +43,7 @@ const useSocket = () => {
     socketInstance.on('disconnect', (reason) => {
       console.warn('[Socket] Disconnected:', reason);
       if (reason === 'io server disconnect') {
-        reconnectTimer.current = setTimeout(() => socketInstance?.connect(), 3000);
+        reconnectTimer.current = setTimeout(() => socketInstance?.connect(), 1000);
       }
     });
 
@@ -64,17 +63,25 @@ const useSocket = () => {
       queryClient.invalidateQueries(['all-notifications']);
     });
 
-    // New message from the other side (not sent by this socket)
+    // new_message: a message FROM the other person arriving on MY socket
+    // This fires on the RECEIVER's personal room — instant, no HTTP round-trip
     socketInstance.on('new_message', (message) => {
       addMessage(message);
+      // Only update conversation list sidebar — no full HTTP refetch
       queryClient.invalidateQueries(['conversations']);
     });
 
-    // Toast for messages when chat is not open
+    // message_sent: server confirms OUR sent message with the real DB record
+    // Replaces the optimistic temp message with the real one
+    socketInstance.on('message_sent', (message) => {
+      addMessage(message); // store deduplication handles temp_ replacement
+    });
+
+    // Toast only when receiver is NOT looking at this chat
     socketInstance.on('message_notification', ({ senderId, senderName, preview }) => {
-      const activeParter = useChatStore.getState().activeConversation;
-      if (!activeParter || activeParter.id !== senderId) {
-        toast(`${senderName}: ${preview}`, { icon: '💬', duration: 5000 });
+      const activePartner = useChatStore.getState().activeConversation;
+      if (!activePartner || activePartner.id !== senderId) {
+        toast(`${senderName}: ${preview}`, { icon: '💬', duration: 4000 });
       }
     });
 

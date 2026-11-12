@@ -20,6 +20,10 @@ const ChatWindow = ({ partner }) => {
   const bottomRef = useRef(null);
   const queryClient = useQueryClient();
   const partnerOnline = onlineUserIds.includes(partner.id);
+  const partnerIdRef = useRef(partner.id);
+
+  // Keep ref in sync for use inside socket callbacks
+  useEffect(() => { partnerIdRef.current = partner.id; }, [partner.id]);
 
   // ── Load message history ────────────────────────────────────────
   const { isLoading } = useQuery({
@@ -30,69 +34,106 @@ const ChatWindow = ({ partner }) => {
         return r.data.messages;
       }),
     enabled: !!partner.id,
-    staleTime: 0,  // always refetch when switching chats
+    staleTime: 0,
   });
 
-  // ── Join socket room + mark messages read ───────────────────────
+  // ── Join room + mark read on open ───────────────────────────────
   useEffect(() => {
     const joinAndMark = () => {
       const socket = getSocket();
       if (!socket) return;
-
       socket.emit('join_chat', { withUserId: partner.id });
       socket.emit('mark_read', { withUserId: partner.id });
       clearUnread(partner.id);
-      queryClient.invalidateQueries(['conversations']);
     };
-
     joinAndMark();
-
-    // If socket reconnects while this window is open, re-join
     const socket = getSocket();
     socket?.on('reconnect', joinAndMark);
     return () => socket?.off('reconnect', joinAndMark);
   }, [partner.id]);
 
-  // ── Track socket connection status ─────────────────────────────
+  // ── Direct socket listeners inside this chat window ────────────
+  // These are separate from useSocket so messages appear INSTANTLY
+  // without waiting for Zustand's addMessage conversation check
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
     const onConnect = () => setSocketConnected(true);
     const onDisconnect = () => setSocketConnected(false);
+
+    // Message arriving from the OTHER person
+    const onNewMessage = (message) => {
+      const pid = partnerIdRef.current;
+      const belongsHere =
+        (message.senderId === pid && message.receiverId === user?.id) ||
+        (message.receiverId === pid && message.senderId === user?.id);
+      if (!belongsHere) return;
+
+      setMessages((prev) => {
+        // avoid duplicate
+        if (prev.some((m) => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
+
+      // Mark as read immediately since chat is open
+      socket.emit('mark_read', { withUserId: pid });
+      clearUnread(pid);
+    };
+
+    // Server confirming OUR sent message (replaces temp optimistic)
+    const onMessageSent = (message) => {
+      const pid = partnerIdRef.current;
+      if (message.receiverId !== pid && message.senderId !== pid) return;
+
+      setMessages((prev) => {
+        // Replace temp optimistic with real message
+        const hasTemp = prev.some(
+          (m) => String(m.id).startsWith('temp_') &&
+            m.senderId === message.senderId &&
+            m.message === message.message
+        );
+        if (hasTemp) {
+          return prev.map((m) =>
+            String(m.id).startsWith('temp_') &&
+            m.senderId === message.senderId &&
+            m.message === message.message
+              ? message
+              : m
+          );
+        }
+        // If no temp found, append only if not duplicate
+        if (prev.some((m) => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
+    };
+
     const onTyping = ({ fromUserId, isTyping }) => {
-      if (fromUserId === partner.id) setPartnerTyping(isTyping);
+      if (fromUserId === partnerIdRef.current) setPartnerTyping(isTyping);
     };
 
     setSocketConnected(socket.connected);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
+    socket.on('new_message', onNewMessage);
+    socket.on('message_sent', onMessageSent);
     socket.on('typing', onTyping);
 
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
+      socket.off('new_message', onNewMessage);
+      socket.off('message_sent', onMessageSent);
       socket.off('typing', onTyping);
     };
-  }, [partner.id]);
+  }, [partner.id, user?.id]);
 
-  // ── Auto-scroll to bottom on new messages ──────────────────────
+  // ── Auto-scroll on new messages ─────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // ── Mark read when new messages arrive in this open chat ────────
-  useEffect(() => {
-    if (messages.length === 0) return;
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.receiverId === user?.id && !lastMsg.isRead) {
-      const socket = getSocket();
-      socket?.emit('mark_read', { withUserId: partner.id });
-      clearUnread(partner.id);
-    }
   }, [messages.length]);
 
-  // ── Send message ───────────────────────────────────────────────
+  // ── Send message ────────────────────────────────────────────────
   const sendMessage = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
@@ -100,7 +141,7 @@ const ChatWindow = ({ partner }) => {
     const socket = getSocket();
 
     if (socket?.connected) {
-      // Optimistic update — add immediately to UI
+      // 1. Add optimistic message immediately — zero perceived latency
       const optimistic = {
         id: `temp_${Date.now()}`,
         senderId: user.id,
@@ -110,19 +151,24 @@ const ChatWindow = ({ partner }) => {
         createdAt: new Date().toISOString(),
         sender: { id: user.id, name: user.name, profilePicture: user.profilePicture },
       };
-      addMessage(optimistic);
+      setMessages((prev) => [...prev, optimistic]);
+      // 2. Fire socket — server saves to DB and emits back as message_sent
       socket.emit('send_message', { receiverId: partner.id, message: trimmed });
       setText('');
+      // Stop typing indicator
+      clearTimeout(typingTimer.current);
+      isTypingRef.current = false;
+      socket.emit('typing', { toUserId: partner.id, isTyping: false });
     } else {
-      // Socket offline — fall back to REST API
+      // Offline fallback via REST
       setSending(true);
       sendMessageREST({ receiverId: partner.id, message: trimmed })
         .then(({ data }) => {
-          addMessage({ ...data.message, sender: { id: user.id, name: user.name } });
+          setMessages((prev) => [...prev, { ...data.message, sender: { id: user.id, name: user.name } }]);
           setText('');
           queryClient.invalidateQueries(['conversations']);
         })
-        .catch(() => {})
+        .catch(() => toast?.error?.('Failed to send'))
         .finally(() => setSending(false));
     }
   }, [text, sending, partner.id, user]);
@@ -136,7 +182,6 @@ const ChatWindow = ({ partner }) => {
 
   const handleTextChange = (e) => {
     setText(e.target.value);
-    // Emit typing indicator
     const socket = getSocket();
     if (!socket?.connected) return;
     if (!isTypingRef.current) {
@@ -153,15 +198,13 @@ const ChatWindow = ({ partner }) => {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3">
+      <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3 bg-white">
         <div className="relative">
-          <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center font-semibold text-primary-700">
+          <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center font-semibold text-primary-700 text-sm">
             {partner.name?.[0]?.toUpperCase()}
           </div>
-          {/* Online dot */}
           <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white
-            ${partnerOnline ? 'bg-green-500' : 'bg-gray-300'}`}
-          />
+            ${partnerOnline ? 'bg-green-500' : 'bg-gray-300'}`} />
         </div>
         <div className="flex-1">
           <p className="font-medium text-sm">{partner.name}</p>
@@ -169,24 +212,20 @@ const ChatWindow = ({ partner }) => {
             {partner.role} · {partnerOnline ? 'Online' : 'Offline'}
           </p>
         </div>
-        {/* Connection status badge */}
-        <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full
+        <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium
           ${socketConnected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
           {socketConnected
             ? <><Wifi size={11} /> Live</>
-            : <><WifiOff size={11} /> Reconnecting...</>
-          }
+            : <><WifiOff size={11} /> Reconnecting...</>}
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
         {isLoading ? (
           <div className="flex justify-center py-10"><Spinner /></div>
         ) : messages.length === 0 ? (
-          <p className="text-center text-sm text-gray-400 py-10">
-            No messages yet. Say hello!
-          </p>
+          <p className="text-center text-sm text-gray-400 py-10">No messages yet. Say hello!</p>
         ) : (
           messages.map((msg) => (
             <MessageBubble
@@ -201,7 +240,7 @@ const ChatWindow = ({ partner }) => {
 
       {/* Typing indicator */}
       {partnerTyping && (
-        <div className="px-4 py-1 bg-gray-50">
+        <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
           <div className="flex items-center gap-2">
             <div className="flex gap-0.5">
               <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
@@ -217,7 +256,7 @@ const ChatWindow = ({ partner }) => {
       <div className="px-4 py-3 border-t border-gray-200 flex gap-2 bg-white">
         <textarea
           value={text}
-          onChange={(e) => handleTextChange(e)}
+          onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder="Type a message... (Enter to send)"
@@ -228,7 +267,6 @@ const ChatWindow = ({ partner }) => {
           onClick={sendMessage}
           disabled={!text.trim() || sending}
           className="p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title="Send (Enter)"
         >
           <Send size={18} />
         </button>

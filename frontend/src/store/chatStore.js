@@ -11,7 +11,13 @@ const useChatStore = create((set, get) => ({
   setActiveConversation: (partner) =>
     set({ activeConversation: partner, messages: [] }),
 
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messagesOrUpdater) => {
+    if (typeof messagesOrUpdater === 'function') {
+      set((state) => ({ messages: messagesOrUpdater(state.messages) }));
+    } else {
+      set({ messages: messagesOrUpdater });
+    }
+  },
 
   // Add a message — dedup optimistic temp messages when real one arrives
   addMessage: (message) => {
