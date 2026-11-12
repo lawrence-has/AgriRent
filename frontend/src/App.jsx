@@ -1,9 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { useEffect } from 'react';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import useSocket from './hooks/useSocket';
+import useAuthStore from './store/authStore';
+import useNotificationStore from './store/notificationStore';
+import { getNotifications } from './api/notifications';
 
 // Auth
 import Login from './pages/auth/Login';
@@ -39,13 +43,28 @@ import ChatPage from './pages/chat/ChatPage';
 // Other
 import NotFound from './pages/NotFound';
 
-const SocketInit = () => { useSocket(); return null; };
+// Initialize socket and load notification count on login
+const AppInit = () => {
+  useSocket();
+  const { token } = useAuthStore();
+  const { setNotifications } = useNotificationStore();
+
+  useEffect(() => {
+    if (!token) return;
+    // Load unread count immediately so bell badge is correct on first render
+    getNotifications({ limit: 20 })
+      .then((r) => setNotifications(r.data.notifications, r.data.unreadCount))
+      .catch(() => {});
+  }, [token]);
+
+  return null;
+};
 
 function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
-        <SocketInit />
+        <AppInit />
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         <Routes>
           {/* Public */}
