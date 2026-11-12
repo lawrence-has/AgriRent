@@ -11,7 +11,7 @@ let socketInstance = null;
 const useSocket = () => {
   const { token, user } = useAuthStore();
   const { addNotification } = useNotificationStore();
-  const { setUserOnline, setUserOffline } = useChatStore();
+  const { setUserOnline, setUserOffline, updateConversationOnMessage, clearUnread } = useChatStore();
   const queryClient = useQueryClient();
   const reconnectTimer = useRef(null);
 
@@ -38,6 +38,7 @@ const useSocket = () => {
     socketInstance.on('connect', () => {
       console.log('[Socket] Connected:', socketInstance.id);
       clearTimeout(reconnectTimer.current);
+      // Re-join active chat room on reconnect
       const active = useChatStore.getState().activeConversation;
       if (active) socketInstance.emit('join_chat', { withUserId: Number(active.id) });
     });
@@ -53,33 +54,50 @@ const useSocket = () => {
       console.error('[Socket] Connection error:', err.message);
     });
 
-    // ── Real-time notification ──────────────────────────────────
-    // Fires whenever the backend calls createNotification(userId, ..., io)
-    socketInstance.on('notification', (notification) => {
-      // 1. Add to store immediately — bell badge updates instantly
-      addNotification(notification);
+    // ── New message: update conversation sidebar instantly ──────
+    // ChatWindow handles rendering the message itself
+    // useSocket handles updating the sidebar (last msg + unread badge)
+    socketInstance.on('new_message', (message) => {
+      const myId = useAuthStore.getState().user?.id;
+      updateConversationOnMessage(message, myId);
 
-      // 2. Invalidate both query caches so dropdown + page refresh too
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['all-notifications']);
-
-      // 3. Show a toast based on type
-      const icons = { reservation: '📋', transaction: '📦', chat: '💬', system: '🔔' };
-      toast(`${icons[notification.type] || '🔔'} ${notification.title}: ${notification.message}`,
-        { duration: 5000 }
-      );
+      // Auto-mark as read if this chat is currently open
+      const activePartner = useChatStore.getState().activeConversation;
+      const senderId = Number(message.senderId);
+      if (activePartner && Number(activePartner.id) === senderId) {
+        clearUnread(senderId);
+        socketInstance.emit('mark_read', { withUserId: senderId });
+      }
     });
 
-    // ── Chat message notification (when chat is not open) ───────
+    // ── message_notification: unread badge when chat is not open ─
     socketInstance.on('message_notification', ({ senderId, senderName, preview }) => {
       const activePartner = useChatStore.getState().activeConversation;
-      if (!activePartner || Number(activePartner.id) !== Number(senderId)) {
+      const isChattingWithSender = activePartner &&
+        Number(activePartner.id) === Number(senderId);
+
+      if (!isChattingWithSender) {
+        // Show toast
         toast(`${senderName}: ${preview}`, { icon: '💬', duration: 4000 });
+        // Refresh conversations from server so new conversation appears if first message
         queryClient.invalidateQueries(['conversations']);
       }
     });
 
-    // ── Online presence ─────────────────────────────────────────
+    // ── System/reservation/transaction notifications ─────────────
+    socketInstance.on('notification', (notification) => {
+      addNotification(notification);
+      queryClient.invalidateQueries(['notifications']);
+      queryClient.invalidateQueries(['all-notifications']);
+
+      const icons = { reservation: '📋', transaction: '📦', chat: '💬', system: '🔔' };
+      toast(
+        `${icons[notification.type] || '🔔'} ${notification.title}: ${notification.message}`,
+        { duration: 5000 }
+      );
+    });
+
+    // ── Online presence ──────────────────────────────────────────
     socketInstance.on('user_online', ({ userId }) => setUserOnline(Number(userId)));
     socketInstance.on('user_offline', ({ userId }) => setUserOffline(Number(userId)));
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Send, Wifi, WifiOff } from 'lucide-react';
 import { getMessages, sendMessage as sendMessageREST } from '../../api/chat';
 import { getSocket } from '../../hooks/useSocket';
@@ -10,114 +10,128 @@ import Spinner from '../common/Spinner';
 
 const ChatWindow = ({ partner }) => {
   const [text, setText] = useState('');
+  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [partnerTyping, setPartnerTyping] = useState(false);
+
+  // Local messages state — no Zustand for the message list itself
+  // This avoids stale closure bugs entirely
+  const [localMessages, setLocalMessages] = useState([]);
+
   const typingTimer = useRef(null);
   const isTypingRef = useRef(false);
-  const { messages, setMessages, addMessage, clearUnread, onlineUserIds } = useChatStore();
+  const { clearUnread, onlineUserIds, updateConversationOnMessage } = useChatStore();
   const { user } = useAuthStore();
   const bottomRef = useRef(null);
   const queryClient = useQueryClient();
+
+  // Always numbers for safe comparison
   const myId = Number(user?.id);
   const partnerId = Number(partner.id);
   const partnerOnline = onlineUserIds.includes(partnerId);
-  const partnerIdRef = useRef(partnerId);
 
-  // Keep ref in sync
+  // Refs so socket callbacks always have fresh values
+  const myIdRef = useRef(myId);
+  const partnerIdRef = useRef(partnerId);
+  useEffect(() => { myIdRef.current = myId; }, [myId]);
   useEffect(() => { partnerIdRef.current = partnerId; }, [partnerId]);
 
-  // ── Load message history ────────────────────────────────────────
-  const { isLoading } = useQuery({
-    queryKey: ['messages', partner.id],
-    queryFn: () =>
-      getMessages(partner.id).then((r) => {
-        setMessages(r.data.messages);
-        return r.data.messages;
-      }),
-    enabled: !!partner.id,
-    staleTime: 0,
-  });
-
-  // ── Join room + mark read on open ───────────────────────────────
+  // ── Load message history from REST ──────────────────────────────
   useEffect(() => {
+    setLoading(true);
+    setLocalMessages([]);
+    getMessages(partner.id)
+      .then((r) => setLocalMessages(r.data.messages || []))
+      .catch(() => setLocalMessages([]))
+      .finally(() => setLoading(false));
+  }, [partnerId]);
+
+  // ── Socket setup ─────────────────────────────────────────────────
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    // Join chat room + mark as read
     const joinAndMark = () => {
-      const socket = getSocket();
-      if (!socket) return;
       socket.emit('join_chat', { withUserId: partnerId });
       socket.emit('mark_read', { withUserId: partnerId });
       clearUnread(partnerId);
     };
     joinAndMark();
-    const socket = getSocket();
-    socket?.on('reconnect', joinAndMark);
-    return () => socket?.off('reconnect', joinAndMark);
-  }, [partnerId]);
+    setSocketConnected(socket.connected);
 
-  // ── Direct socket listeners inside this chat window ────────────
-  // These are separate from useSocket so messages appear INSTANTLY
-  // without waiting for Zustand's addMessage conversation check
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-
-    const onConnect = () => setSocketConnected(true);
+    const onConnect = () => {
+      setSocketConnected(true);
+      joinAndMark(); // re-join on reconnect
+    };
     const onDisconnect = () => setSocketConnected(false);
 
-    // Message arriving from the OTHER person
-    const onNewMessage = (message) => {
+    // Incoming message from partner → add to local list
+    const onNewMessage = (msg) => {
+      const senderId = Number(msg.senderId);
+      const receiverId = Number(msg.receiverId);
       const pid = partnerIdRef.current;
-      const mid = Number(user?.id);
-      const senderId = Number(message.senderId);
-      const receiverId = Number(message.receiverId);
+      const mid = myIdRef.current;
 
-      const belongsHere =
+      // Only handle messages that belong to THIS conversation
+      const belongs =
         (senderId === pid && receiverId === mid) ||
-        (receiverId === pid && senderId === mid);
-      if (!belongsHere) return;
+        (senderId === mid && receiverId === pid);
+      if (!belongs) return;
 
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === message.id)) return prev;
-        return [...prev, message];
+      setLocalMessages((prev) => {
+        // Skip if already in list
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
       });
 
-      socket.emit('mark_read', { withUserId: pid });
-      clearUnread(pid);
+      // Auto mark read since the chat is open
+      if (senderId === pid) {
+        socket.emit('mark_read', { withUserId: pid });
+        clearUnread(pid);
+      }
+
+      queryClient.invalidateQueries(['conversations']);
     };
 
-    // Server confirming OUR sent message (replaces temp optimistic)
-    const onMessageSent = (message) => {
+    // Server confirms our sent message → replace optimistic temp entry + update sidebar
+    const onMessageSent = (msg) => {
+      const senderId = Number(msg.senderId);
+      const receiverId = Number(msg.receiverId);
       const pid = partnerIdRef.current;
-      const receiverId = Number(message.receiverId);
-      const senderId = Number(message.senderId);
-      if (receiverId !== pid && senderId !== pid) return;
+      const mid = myIdRef.current;
 
-      setMessages((prev) => {
-        const hasTemp = prev.some(
+      if (senderId !== mid || receiverId !== pid) return;
+
+      setLocalMessages((prev) => {
+        const idx = prev.findIndex(
           (m) =>
             String(m.id).startsWith('temp_') &&
-            Number(m.senderId) === Number(message.senderId) &&
-            m.message === message.message
+            Number(m.senderId) === senderId &&
+            m.message === msg.message
         );
-        if (hasTemp) {
-          return prev.map((m) =>
-            String(m.id).startsWith('temp_') &&
-            Number(m.senderId) === Number(message.senderId) &&
-            m.message === message.message
-              ? message
-              : m
-          );
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = msg;
+          return next;
         }
-        if (prev.some((m) => m.id === message.id)) return prev;
-        return [...prev, message];
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
       });
+
+      // Update sidebar last message for sender
+      updateConversationOnMessage(msg, mid);
+      queryClient.invalidateQueries(['conversations']);
     };
 
+    // Typing indicator from partner
     const onTyping = ({ fromUserId, isTyping }) => {
-      if (Number(fromUserId) === partnerIdRef.current) setPartnerTyping(isTyping);
+      if (Number(fromUserId) === partnerIdRef.current) {
+        setPartnerTyping(isTyping);
+      }
     };
 
-    setSocketConnected(socket.connected);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('new_message', onNewMessage);
@@ -131,14 +145,14 @@ const ChatWindow = ({ partner }) => {
       socket.off('message_sent', onMessageSent);
       socket.off('typing', onTyping);
     };
-  }, [partnerId, myId]);
+  }, [partnerId]); // re-run when switching to a different conversation
 
-  // ── Auto-scroll on new messages ─────────────────────────────────
+  // ── Auto-scroll ──────────────────────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [localMessages.length]);
 
-  // ── Send message ────────────────────────────────────────────────
+  // ── Send message ─────────────────────────────────────────────────
   const sendMessage = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
@@ -146,8 +160,10 @@ const ChatWindow = ({ partner }) => {
     const socket = getSocket();
 
     if (socket?.connected) {
+      // Optimistic: show immediately on sender's side
+      const tempId = `temp_${Date.now()}`;
       const optimistic = {
-        id: `temp_${Date.now()}`,
+        id: tempId,
         senderId: myId,
         receiverId: partnerId,
         message: trimmed,
@@ -155,21 +171,26 @@ const ChatWindow = ({ partner }) => {
         createdAt: new Date().toISOString(),
         sender: { id: myId, name: user.name, profilePicture: user.profilePicture },
       };
-      setMessages((prev) => [...prev, optimistic]);
+      setLocalMessages((prev) => [...prev, optimistic]);
       socket.emit('send_message', { receiverId: partnerId, message: trimmed });
       setText('');
+      // Clear typing
       clearTimeout(typingTimer.current);
       isTypingRef.current = false;
       socket.emit('typing', { toUserId: partnerId, isTyping: false });
     } else {
+      // Offline fallback: REST API
       setSending(true);
       sendMessageREST({ receiverId: partnerId, message: trimmed })
         .then(({ data }) => {
-          setMessages((prev) => [...prev, { ...data.message, sender: { id: user.id, name: user.name } }]);
+          setLocalMessages((prev) => [
+            ...prev,
+            { ...data.message, sender: { id: myId, name: user.name } },
+          ]);
           setText('');
           queryClient.invalidateQueries(['conversations']);
         })
-        .catch(() => toast?.error?.('Failed to send'))
+        .catch(console.error)
         .finally(() => setSending(false));
     }
   }, [text, sending, partnerId, myId, user]);
@@ -205,7 +226,8 @@ const ChatWindow = ({ partner }) => {
             {partner.name?.[0]?.toUpperCase()}
           </div>
           <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white
-            ${partnerOnline ? 'bg-green-500' : 'bg-gray-300'}`} />
+            ${partnerOnline ? 'bg-green-500' : 'bg-gray-300'}`}
+          />
         </div>
         <div className="flex-1">
           <p className="font-medium text-sm">{partner.name}</p>
@@ -221,14 +243,16 @@ const ChatWindow = ({ partner }) => {
         </div>
       </div>
 
-      {/* Messages area */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
-        {isLoading ? (
+        {loading ? (
           <div className="flex justify-center py-10"><Spinner /></div>
-        ) : messages.length === 0 ? (
-          <p className="text-center text-sm text-gray-400 py-10">No messages yet. Say hello!</p>
+        ) : localMessages.length === 0 ? (
+          <p className="text-center text-sm text-gray-400 py-10">
+            No messages yet. Say hello!
+          </p>
         ) : (
-          messages.map((msg) => (
+          localMessages.map((msg) => (
             <MessageBubble
               key={msg.id}
               message={msg}

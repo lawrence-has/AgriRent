@@ -4,7 +4,7 @@ const useChatStore = create((set, get) => ({
   conversations: [],
   activeConversation: null,
   messages: [],
-  onlineUserIds: [], // plain array so Zustand detects changes
+  onlineUserIds: [],
 
   setConversations: (conversations) => set({ conversations }),
 
@@ -19,75 +19,57 @@ const useChatStore = create((set, get) => ({
     }
   },
 
-  // Add a message — dedup optimistic temp messages when real one arrives
-  addMessage: (message) => {
-    const { activeConversation } = get();
-    const partnerId = activeConversation?.id;
-    const belongsHere =
-      partnerId &&
-      (message.senderId === partnerId || message.receiverId === partnerId);
-
+  // ── Update conversation list when a new message arrives ────────
+  // Called from useSocket on new_message — updates sidebar instantly
+  updateConversationOnMessage: (message, myId) => {
     set((state) => {
-      let newMessages = state.messages;
+      const senderId = Number(message.senderId);
+      const receiverId = Number(message.receiverId);
+      const mid = Number(myId);
 
-      if (belongsHere) {
-        // Replace matching optimistic message if present, otherwise append
-        const hasOptimistic = state.messages.some(
-          (m) =>
-            String(m.id).startsWith('temp_') &&
-            m.senderId === message.senderId &&
-            m.message === message.message
-        );
-        if (hasOptimistic) {
-          newMessages = state.messages.map((m) =>
-            String(m.id).startsWith('temp_') &&
-            m.senderId === message.senderId &&
-            m.message === message.message
-              ? message
-              : m
-          );
-        } else {
-          // Only append if not already in the list (avoid duplicates)
-          const alreadyExists = state.messages.some((m) => m.id === message.id);
-          newMessages = alreadyExists
-            ? state.messages
-            : [...state.messages, message];
-        }
+      // The other person in this message
+      const partnerId = senderId === mid ? receiverId : senderId;
+      const isActiveChat = Number(state.activeConversation?.id) === partnerId;
+      const isMine = senderId === mid;
+
+      const exists = state.conversations.some(
+        (c) => Number(c.partner?.id) === partnerId
+      );
+
+      if (exists) {
+        return {
+          conversations: state.conversations.map((c) => {
+            if (Number(c.partner?.id) !== partnerId) return c;
+            return {
+              ...c,
+              lastMessage: message,
+              // Only increment unread if: chat is not open AND message is from other person
+              unreadCount: (!isActiveChat && !isMine)
+                ? (c.unreadCount || 0) + 1
+                : c.unreadCount,
+            };
+          }),
+        };
       }
 
-      // Update conversation list last message + unread count
-      const isActiveChat =
-        state.activeConversation?.id === message.senderId ||
-        state.activeConversation?.id === message.receiverId;
-
-      const updatedConversations = state.conversations.map((c) => {
-        const isThis =
-          c.partner?.id === message.senderId ||
-          c.partner?.id === message.receiverId;
-        if (!isThis) return c;
-
-        const isMine = message.senderId !== message.receiverId &&
-          c.partner?.id === message.receiverId;
-
-        return {
-          ...c,
-          lastMessage: message,
-          unreadCount:
-            !isActiveChat && !isMine
-              ? (c.unreadCount || 0) + 1
-              : c.unreadCount,
-        };
-      });
-
-      return { messages: newMessages, conversations: updatedConversations };
+      // New conversation — add it to top of list (partner info comes later via refetch)
+      return {
+        conversations: [
+          {
+            partner: message.sender || { id: partnerId, name: 'Unknown' },
+            lastMessage: message,
+            unreadCount: isMine ? 0 : 1,
+          },
+          ...state.conversations,
+        ],
+      };
     });
   },
 
-  // Add a brand-new conversation to the list (when first message is sent)
   addConversation: (conversation) => {
     set((state) => {
       const exists = state.conversations.some(
-        (c) => c.partner?.id === conversation.partner?.id
+        (c) => Number(c.partner?.id) === Number(conversation.partner?.id)
       );
       if (exists) return state;
       return { conversations: [conversation, ...state.conversations] };
@@ -97,20 +79,22 @@ const useChatStore = create((set, get) => ({
   clearUnread: (partnerId) =>
     set((state) => ({
       conversations: state.conversations.map((c) =>
-        c.partner?.id === partnerId ? { ...c, unreadCount: 0 } : c
+        Number(c.partner?.id) === Number(partnerId)
+          ? { ...c, unreadCount: 0 }
+          : c
       ),
     })),
 
   setUserOnline: (userId) =>
     set((state) => ({
-      onlineUserIds: state.onlineUserIds.includes(userId)
+      onlineUserIds: state.onlineUserIds.includes(Number(userId))
         ? state.onlineUserIds
-        : [...state.onlineUserIds, userId],
+        : [...state.onlineUserIds, Number(userId)],
     })),
 
   setUserOffline: (userId) =>
     set((state) => ({
-      onlineUserIds: state.onlineUserIds.filter((id) => id !== userId),
+      onlineUserIds: state.onlineUserIds.filter((id) => id !== Number(userId)),
     })),
 }));
 

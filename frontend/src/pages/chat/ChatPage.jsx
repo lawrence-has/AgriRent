@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, ArrowLeft, UserPlus, Search, X } from 'lucide-react';
 import { getConversations } from '../../api/chat';
 import api from '../../api/axios';
-import { getSocket } from '../../hooks/useSocket';
 import useChatStore from '../../store/chatStore';
 import useAuthStore from '../../store/authStore';
 import ConversationList from '../../components/chat/ConversationList';
@@ -12,7 +11,7 @@ import EmptyState from '../../components/common/EmptyState';
 import Spinner from '../../components/common/Spinner';
 
 const ChatPage = () => {
-  const { activeConversation, setActiveConversation, setConversations, addConversation } = useChatStore();
+  const { activeConversation, setActiveConversation, conversations, setConversations, addConversation } = useChatStore();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showNewChat, setShowNewChat] = useState(false);
@@ -20,8 +19,8 @@ const ChatPage = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
 
-  // ── Load conversations ─────────────────────────────────────────
-  const { data, isLoading } = useQuery({
+  // ── Load conversations from HTTP (initial load + background sync) ─
+  const { isLoading } = useQuery({
     queryKey: ['conversations'],
     queryFn: () =>
       getConversations().then((r) => {
@@ -29,20 +28,13 @@ const ChatPage = () => {
         return r.data.conversations;
       }),
     staleTime: 1000 * 30,
+    // Refetch when window regains focus (e.g. user switches tabs)
+    refetchOnWindowFocus: true,
   });
 
-  // ── Re-fetch when socket events fire ──────────────────────────
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-    const refresh = () => queryClient.invalidateQueries(['conversations']);
-    socket.on('new_message', refresh);
-    socket.on('message_read', refresh);
-    return () => {
-      socket.off('new_message', refresh);
-      socket.off('message_read', refresh);
-    };
-  }, []);
+  // No separate socket listeners needed here —
+  // useSocket already calls updateConversationOnMessage which updates the store,
+  // and the store update re-renders ConversationList automatically
 
   // ── Search users to start a new conversation ──────────────────
   useEffect(() => {
@@ -139,7 +131,7 @@ const ChatPage = () => {
         )}
 
         {/* Conversation list */}
-        {!data?.length && !showNewChat ? (
+        {!conversations?.length && !showNewChat ? (
           <EmptyState
             icon={MessageSquare}
             title="No conversations yet"
@@ -151,7 +143,7 @@ const ChatPage = () => {
           />
         ) : (
           <ConversationList
-            conversations={data || []}
+            conversations={conversations || []}
             activeId={activeConversation?.id}
             onSelect={handleSelectConversation}
           />
