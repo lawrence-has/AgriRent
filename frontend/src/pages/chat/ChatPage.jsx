@@ -1,18 +1,26 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, ArrowLeft } from 'lucide-react';
+import { MessageSquare, ArrowLeft, UserPlus, Search, X } from 'lucide-react';
 import { getConversations } from '../../api/chat';
+import api from '../../api/axios';
 import { getSocket } from '../../hooks/useSocket';
 import useChatStore from '../../store/chatStore';
+import useAuthStore from '../../store/authStore';
 import ConversationList from '../../components/chat/ConversationList';
 import ChatWindow from '../../components/chat/ChatWindow';
 import EmptyState from '../../components/common/EmptyState';
 import Spinner from '../../components/common/Spinner';
 
 const ChatPage = () => {
-  const { activeConversation, setActiveConversation, setConversations } = useChatStore();
+  const { activeConversation, setActiveConversation, setConversations, addConversation } = useChatStore();
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
+  // ── Load conversations ─────────────────────────────────────────
   const { data, isLoading } = useQuery({
     queryKey: ['conversations'],
     queryFn: () =>
@@ -20,77 +28,154 @@ const ChatPage = () => {
         setConversations(r.data.conversations);
         return r.data.conversations;
       }),
-    // No polling — socket events trigger invalidation instead
-    staleTime: 1000 * 60,
+    staleTime: 1000 * 30,
   });
 
-  // Re-fetch conversations whenever a new message arrives via socket
+  // ── Re-fetch when socket events fire ──────────────────────────
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
-
     const refresh = () => queryClient.invalidateQueries(['conversations']);
     socket.on('new_message', refresh);
     socket.on('message_read', refresh);
-
     return () => {
       socket.off('new_message', refresh);
       socket.off('message_read', refresh);
     };
   }, []);
 
+  // ── Search users to start a new conversation ──────────────────
+  useEffect(() => {
+    if (!userSearch.trim()) { setSearchResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        // Search users by name — use existing users endpoint
+        const role = user?.role === 'farmer' ? 'owner' : 'farmer';
+        const res = await api.get('/users', { params: { limit: 20 } });
+        const filtered = res.data.users.filter(
+          (u) =>
+            u.id !== user?.id &&
+            u.name.toLowerCase().includes(userSearch.toLowerCase())
+        );
+        setSearchResults(filtered);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [userSearch]);
+
   const handleSelectConversation = (partner) => {
     setActiveConversation(partner);
+    setShowNewChat(false);
   };
 
-  const handleBack = () => {
-    setActiveConversation(null);
+  const handleStartChat = (u) => {
+    const partner = { id: u.id, name: u.name, role: u.role, profilePicture: u.profilePicture };
+    // Add to conversations list if not already there
+    addConversation({ partner, lastMessage: null, unreadCount: 0 });
+    setActiveConversation(partner);
+    setShowNewChat(false);
+    setUserSearch('');
+    setSearchResults([]);
   };
+
+  const handleBack = () => setActiveConversation(null);
 
   if (isLoading) return <div className="py-20"><Spinner size="lg" /></div>;
 
   return (
     <div className="h-[calc(100vh-80px)] flex rounded-xl overflow-hidden shadow-sm border border-gray-100 bg-white">
 
-      {/* Conversation sidebar */}
+      {/* ── Conversation sidebar ──────────────────────────────── */}
       <div className={`border-r border-gray-100 flex-shrink-0 flex flex-col
         ${activeConversation ? 'hidden md:flex md:w-80' : 'w-full md:w-80'}`}
       >
+        {/* Header */}
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-semibold">Messages</h2>
-          {data?.length > 0 && (
-            <span className="text-xs text-gray-400">{data.length} conversation{data.length !== 1 ? 's' : ''}</span>
-          )}
+          <button
+            onClick={() => setShowNewChat(!showNewChat)}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-primary-600 transition-colors"
+            title="New conversation"
+          >
+            {showNewChat ? <X size={18} /> : <UserPlus size={18} />}
+          </button>
         </div>
 
-        {!data?.length ? (
+        {/* New chat search panel */}
+        {showNewChat && (
+          <div className="border-b border-gray-100 p-3 bg-gray-50">
+            <p className="text-xs text-gray-500 mb-2 font-medium">Start a new conversation</p>
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                autoFocus
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search by name..."
+                className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            {/* Results */}
+            <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
+              {searching && <p className="text-xs text-gray-400 text-center py-2">Searching...</p>}
+              {!searching && userSearch && searchResults.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-2">No users found</p>
+              )}
+              {searchResults.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => handleStartChat(u)}
+                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-primary-50 text-left transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center font-semibold text-primary-700 text-sm shrink-0">
+                    {u.name?.[0]?.toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{u.name}</p>
+                    <p className="text-xs text-gray-500 capitalize">{u.role}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Conversation list */}
+        {!data?.length && !showNewChat ? (
           <EmptyState
             icon={MessageSquare}
-            title="No conversations"
-            description="Conversations appear here after a reservation is made"
+            title="No conversations yet"
+            description={
+              <span>
+                Click <strong>+</strong> above to start a conversation
+              </span>
+            }
           />
         ) : (
           <ConversationList
-            conversations={data}
+            conversations={data || []}
             activeId={activeConversation?.id}
             onSelect={handleSelectConversation}
           />
         )}
       </div>
 
-      {/* Chat window */}
-      <div className={`flex-1 flex flex-col
-        ${!activeConversation ? 'hidden md:flex' : 'flex'}`}
-      >
+      {/* ── Chat window ───────────────────────────────────────── */}
+      <div className={`flex-1 flex flex-col ${!activeConversation ? 'hidden md:flex' : 'flex'}`}>
         {activeConversation ? (
           <>
-            {/* Mobile back button */}
-            <div className="md:hidden px-3 pt-2">
+            {/* Mobile back */}
+            <div className="md:hidden px-3 pt-2 pb-1 border-b border-gray-100">
               <button
                 onClick={handleBack}
                 className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
               >
-                <ArrowLeft size={16} /> Back
+                <ArrowLeft size={16} /> Back to messages
               </button>
             </div>
             <ChatWindow partner={activeConversation} />
@@ -100,7 +185,7 @@ const ChatPage = () => {
             <EmptyState
               icon={MessageSquare}
               title="Select a conversation"
-              description="Choose a contact from the list to start messaging"
+              description="Pick someone from the list or start a new chat"
             />
           </div>
         )}

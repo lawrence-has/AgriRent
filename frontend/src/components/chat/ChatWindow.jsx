@@ -15,11 +15,11 @@ const ChatWindow = ({ partner }) => {
   const [partnerTyping, setPartnerTyping] = useState(false);
   const typingTimer = useRef(null);
   const isTypingRef = useRef(false);
-  const { messages, setMessages, addMessage, clearUnread, onlineUsers } = useChatStore();
+  const { messages, setMessages, addMessage, clearUnread, onlineUserIds } = useChatStore();
   const { user } = useAuthStore();
   const bottomRef = useRef(null);
   const queryClient = useQueryClient();
-  const partnerOnline = onlineUsers.has(partner.id);
+  const partnerOnline = onlineUserIds.includes(partner.id);
 
   // ── Load message history ────────────────────────────────────────
   const { isLoading } = useQuery({

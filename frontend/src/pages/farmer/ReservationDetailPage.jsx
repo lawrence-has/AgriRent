@@ -1,14 +1,18 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { MessageSquare } from 'lucide-react';
 import { getReservationById } from '../../api/reservations';
+import useChatStore from '../../store/chatStore';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import Spinner from '../../components/common/Spinner';
 
 const ReservationDetailPage = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { setActiveConversation, addConversation } = useChatStore();
+
   const { data, isLoading } = useQuery({
     queryKey: ['reservation', id],
     queryFn: () => getReservationById(id).then((r) => r.data.reservation),
@@ -18,6 +22,15 @@ const ReservationDetailPage = () => {
   if (!data) return <p className="text-center text-gray-500 mt-20">Reservation not found</p>;
 
   const r = data;
+
+  const handleMessageOwner = () => {
+    const owner = r.equipment?.owner;
+    if (!owner) return;
+    const partner = { id: owner.id, name: owner.name, role: 'owner', profilePicture: owner.profilePicture || null };
+    addConversation({ partner, lastMessage: null, unreadCount: 0 });
+    setActiveConversation(partner);
+    navigate('/chat');
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
@@ -53,15 +66,22 @@ const ReservationDetailPage = () => {
             <p className="text-sm">{r.notes}</p>
           </div>
         )}
-        <div>
-          <p className="text-xs text-gray-500 uppercase font-medium mb-1">Equipment Owner</p>
-          <p className="text-sm font-medium">{r.equipment?.owner?.name}</p>
-          <p className="text-sm text-gray-500">{r.equipment?.owner?.phone}</p>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs text-gray-500 uppercase font-medium mb-1">Equipment Owner</p>
+            <p className="text-sm font-medium">{r.equipment?.owner?.name}</p>
+            <p className="text-sm text-gray-500">{r.equipment?.owner?.phone}</p>
+          </div>
+          {r.equipment?.owner && (
+            <Button variant="outline" size="sm" onClick={handleMessageOwner} className="flex items-center gap-1.5">
+              <MessageSquare size={14} /> Message Owner
+            </Button>
+          )}
         </div>
       </div>
 
-      <Button as={Link} to={`/chat`} variant="outline" className="w-full flex items-center justify-center gap-2">
-        <MessageSquare size={16} /> Message Equipment Owner
+      <Button onClick={handleMessageOwner} className="w-full flex items-center justify-center gap-2">
+        <MessageSquare size={16} /> Open Chat with Equipment Owner
       </Button>
     </div>
   );

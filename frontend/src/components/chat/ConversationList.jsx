@@ -2,12 +2,12 @@ import { formatDistanceToNow } from 'date-fns';
 import useChatStore from '../../store/chatStore';
 
 const ConversationList = ({ conversations, activeId, onSelect }) => {
-  const { onlineUsers } = useChatStore();
+  const { onlineUserIds } = useChatStore();
 
   return (
     <div className="overflow-y-auto flex-1">
       {conversations.map(({ partner, lastMessage, unreadCount }) => {
-        const isOnline = onlineUsers.has(partner.id);
+        const isOnline = onlineUserIds.includes(partner.id);
         const isActive = activeId === partner.id;
 
         return (

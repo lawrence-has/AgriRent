@@ -4,88 +4,108 @@ const useChatStore = create((set, get) => ({
   conversations: [],
   activeConversation: null,
   messages: [],
-  onlineUsers: new Set(),
+  onlineUserIds: [], // plain array so Zustand detects changes
 
   setConversations: (conversations) => set({ conversations }),
 
-  setActiveConversation: (partner) => {
-    set({ activeConversation: partner, messages: [] });
-  },
+  setActiveConversation: (partner) =>
+    set({ activeConversation: partner, messages: [] }),
 
   setMessages: (messages) => set({ messages }),
 
-  // Only add message to the visible list if it belongs to the active conversation
+  // Add a message — dedup optimistic temp messages when real one arrives
   addMessage: (message) => {
-    const { activeConversation, conversations } = get();
+    const { activeConversation } = get();
     const partnerId = activeConversation?.id;
-    const msgPartnerId =
-      message.senderId === partnerId ? message.senderId : message.receiverId;
-
-    // Append to messages only if this chat is currently open
-    if (
+    const belongsHere =
       partnerId &&
-      (message.senderId === partnerId || message.receiverId === partnerId)
-    ) {
-      set((state) => ({ messages: [...state.messages, message] }));
-    }
+      (message.senderId === partnerId || message.receiverId === partnerId);
 
-    // Always update conversation list: last message + unread count
     set((state) => {
-      const otherUserId =
-        message.senderId === state.activeConversation?.id
-          ? message.receiverId
-          : message.senderId;
+      let newMessages = state.messages;
 
-      const exists = state.conversations.find(
-        (c) => c.partner?.id === message.senderId || c.partner?.id === message.receiverId
-      );
-
-      if (!exists) {
-        // New conversation — will be refreshed by query invalidation
-        return state;
+      if (belongsHere) {
+        // Replace matching optimistic message if present, otherwise append
+        const hasOptimistic = state.messages.some(
+          (m) =>
+            String(m.id).startsWith('temp_') &&
+            m.senderId === message.senderId &&
+            m.message === message.message
+        );
+        if (hasOptimistic) {
+          newMessages = state.messages.map((m) =>
+            String(m.id).startsWith('temp_') &&
+            m.senderId === message.senderId &&
+            m.message === message.message
+              ? message
+              : m
+          );
+        } else {
+          // Only append if not already in the list (avoid duplicates)
+          const alreadyExists = state.messages.some((m) => m.id === message.id);
+          newMessages = alreadyExists
+            ? state.messages
+            : [...state.messages, message];
+        }
       }
 
-      return {
-        conversations: state.conversations.map((c) => {
-          const isThisConversation =
-            c.partner?.id === message.senderId || c.partner?.id === message.receiverId;
-          if (!isThisConversation) return c;
+      // Update conversation list last message + unread count
+      const isActiveChat =
+        state.activeConversation?.id === message.senderId ||
+        state.activeConversation?.id === message.receiverId;
 
-          // If sender is not me and this chat is NOT active → increment unread
-          const isActiveChat = state.activeConversation?.id === message.senderId ||
-            state.activeConversation?.id === message.receiverId;
-          const isMine = message.senderId !== message.receiverId &&
-            c.partner?.id === message.receiverId;
+      const updatedConversations = state.conversations.map((c) => {
+        const isThis =
+          c.partner?.id === message.senderId ||
+          c.partner?.id === message.receiverId;
+        if (!isThis) return c;
 
-          return {
-            ...c,
-            lastMessage: message,
-            unreadCount: (!isActiveChat && !isMine)
+        const isMine = message.senderId !== message.receiverId &&
+          c.partner?.id === message.receiverId;
+
+        return {
+          ...c,
+          lastMessage: message,
+          unreadCount:
+            !isActiveChat && !isMine
               ? (c.unreadCount || 0) + 1
               : c.unreadCount,
-          };
-        }),
-      };
+        };
+      });
+
+      return { messages: newMessages, conversations: updatedConversations };
     });
   },
 
-  clearUnread: (partnerId) => set((state) => ({
-    conversations: state.conversations.map((c) =>
-      c.partner?.id === partnerId ? { ...c, unreadCount: 0 } : c
-    ),
-  })),
+  // Add a brand-new conversation to the list (when first message is sent)
+  addConversation: (conversation) => {
+    set((state) => {
+      const exists = state.conversations.some(
+        (c) => c.partner?.id === conversation.partner?.id
+      );
+      if (exists) return state;
+      return { conversations: [conversation, ...state.conversations] };
+    });
+  },
 
-  setUserOnline: (userId) => set((state) => {
-    const next = new Set(state.onlineUsers);
-    next.add(userId);
-    return { onlineUsers: next };
-  }),
+  clearUnread: (partnerId) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.partner?.id === partnerId ? { ...c, unreadCount: 0 } : c
+      ),
+    })),
 
-  setUserOffline: (userId) => set((state) => {
-    const next = new Set(state.onlineUsers);
-    next.delete(userId);
-    return { onlineUsers: next };
-  }),
+  setUserOnline: (userId) =>
+    set((state) => ({
+      onlineUserIds: state.onlineUserIds.includes(userId)
+        ? state.onlineUserIds
+        : [...state.onlineUserIds, userId],
+    })),
+
+  setUserOffline: (userId) =>
+    set((state) => ({
+      onlineUserIds: state.onlineUserIds.filter((id) => id !== userId),
+    })),
 }));
 
 export default useChatStore;

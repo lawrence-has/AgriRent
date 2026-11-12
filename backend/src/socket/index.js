@@ -78,12 +78,15 @@ const initSocket = (io) => {
           },
         };
 
-        // Emit to the shared chat room (both users if both are in it)
+        // Emit to the shared chat room — but skip the sender's socket
+        // since they already have it via optimistic update
         const roomId = getRoomId(userId, parseInt(receiverId));
-        io.to(`chat_${roomId}`).emit('new_message', payload);
+        socket.to(`chat_${roomId}`).emit('new_message', payload);
+
+        // Also emit back to ALL of sender's other sockets/tabs (not this one)
+        socket.to(`user_${userId}`).emit('new_message', payload);
 
         // Notify receiver's personal room (for unread badge / toast)
-        // even if they haven't opened the chat room
         io.to(`user_${receiverId}`).emit('message_notification', {
           senderId: userId,
           senderName: socket.user.name,
