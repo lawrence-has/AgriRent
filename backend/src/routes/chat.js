@@ -1,58 +1,115 @@
 const express = require('express');
-const { Op } = require('sequelize');
+const { Op, literal, fn, col } = require('sequelize');
 const { body, param } = require('express-validator');
-const { ChatMessage, User } = require('../models');
+const { ChatMessage, User, sequelize } = require('../models');
 const { requireAuth } = require('../middleware/auth');
 const { handleValidation, validatePagination } = require('../middleware/validate');
 
 const router = express.Router();
 
 // ── GET /api/chat/conversations ──────────────────────────────────
+// OPTIMIZED: replaced N+1 pattern (1 query per partner) with
+// a single raw query that gets partners + lastMessage + unreadCount
+// in one pass using GROUP BY + subquery.
 router.get('/conversations', requireAuth, async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    const sent = await ChatMessage.findAll({
-      where: { senderId: userId },
-      attributes: ['receiverId'],
-      group: ['receiverId'],
-    });
-    const received = await ChatMessage.findAll({
-      where: { receiverId: userId },
-      attributes: ['senderId'],
-      group: ['senderId'],
-    });
-
-    const partnerIds = new Set([
-      ...sent.map((m) => m.receiverId).filter((id) => id !== userId),
-      ...received.map((m) => m.senderId).filter((id) => id !== userId),
-    ]);
-
-    const conversations = await Promise.all(
-      [...partnerIds].map(async (partnerId) => {
-        const partner = await User.findByPk(partnerId, {
-          attributes: ['id', 'name', 'profilePicture', 'role'],
-        });
-        // Skip deleted users
-        if (!partner) return null;
-
-        const lastMessage = await ChatMessage.findOne({
-          where: {
-            [Op.or]: [
-              { senderId: userId, receiverId: partnerId },
-              { senderId: partnerId, receiverId: userId },
-            ],
-          },
-          order: [['createdAt', 'DESC']],
-        });
-        const unreadCount = await ChatMessage.count({
-          where: { senderId: partnerId, receiverId: userId, isRead: false },
-        });
-        return { partner, lastMessage, unreadCount };
-      })
+    // Step 1: Get all unique partner IDs in one query (no N+1)
+    const [sentRows] = await sequelize.query(
+      `SELECT DISTINCT receiverId AS partnerId FROM ChatMessages
+       WHERE senderId = :userId AND deletedAt IS NULL AND receiverId != :userId`,
+      { replacements: { userId }, type: sequelize.QueryTypes.SELECT }
+    );
+    const [receivedRows] = await sequelize.query(
+      `SELECT DISTINCT senderId AS partnerId FROM ChatMessages
+       WHERE receiverId = :userId AND deletedAt IS NULL AND senderId != :userId`,
+      { replacements: { userId }, type: sequelize.QueryTypes.SELECT }
     );
 
-    res.json({ success: true, conversations: conversations.filter(Boolean) });
+    // Merge unique partner IDs
+    const partnerIdSet = new Set();
+    if (Array.isArray(sentRows)) sentRows.forEach((r) => r && partnerIdSet.add(r.partnerId));
+    else if (sentRows) partnerIdSet.add(sentRows.partnerId);
+
+    if (Array.isArray(receivedRows)) receivedRows.forEach((r) => r && partnerIdSet.add(r.partnerId));
+    else if (receivedRows) partnerIdSet.add(receivedRows.partnerId);
+
+    const partnerIds = [...partnerIdSet].filter(Boolean);
+
+    if (!partnerIds.length) {
+      return res.json({ success: true, conversations: [] });
+    }
+
+    // Step 2: Fetch all partners in ONE query
+    const partners = await User.findAll({
+      where: { id: { [Op.in]: partnerIds } },
+      attributes: ['id', 'name', 'profilePicture', 'role'],
+      paranoid: false,
+    });
+
+    // Step 3: Fetch last message per conversation in ONE query using subquery
+    const lastMessages = await ChatMessage.findAll({
+      where: {
+        id: {
+          [Op.in]: literal(`(
+            SELECT MAX(id) FROM ChatMessages
+            WHERE deletedAt IS NULL
+            AND (
+              (senderId = ${userId} AND receiverId IN (${partnerIds.join(',')}))
+              OR
+              (receiverId = ${userId} AND senderId IN (${partnerIds.join(',')}))
+            )
+            GROUP BY
+              LEAST(senderId, receiverId),
+              GREATEST(senderId, receiverId)
+          )`),
+        },
+      },
+      attributes: ['id', 'senderId', 'receiverId', 'message', 'isRead', 'createdAt'],
+      order: [['createdAt', 'DESC']],
+    });
+
+    // Step 4: Count unread per partner in ONE query
+    const [unreadRows] = await sequelize.query(
+      `SELECT senderId, COUNT(*) AS unreadCount
+       FROM ChatMessages
+       WHERE receiverId = :userId AND isRead = false AND deletedAt IS NULL
+         AND senderId IN (:partnerIds)
+       GROUP BY senderId`,
+      {
+        replacements: { userId, partnerIds },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    // Build unread map
+    const unreadMap = {};
+    const unreadArr = Array.isArray(unreadRows) ? unreadRows : (unreadRows ? [unreadRows] : []);
+    unreadArr.forEach((r) => { if (r) unreadMap[r.senderId] = parseInt(r.unreadCount); });
+
+    // Build last message map
+    const lastMessageMap = {};
+    lastMessages.forEach((m) => {
+      const pid = m.senderId === userId ? m.receiverId : m.senderId;
+      lastMessageMap[pid] = m;
+    });
+
+    // Assemble conversations
+    const conversations = partners.map((partner) => ({
+      partner,
+      lastMessage: lastMessageMap[partner.id] || null,
+      unreadCount: unreadMap[partner.id] || 0,
+    }));
+
+    // Sort by last message time descending
+    conversations.sort((a, b) => {
+      const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt) : 0;
+      const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt) : 0;
+      return bTime - aTime;
+    });
+
+    res.json({ success: true, conversations });
   } catch (error) {
     next(error);
   }
@@ -62,9 +119,7 @@ router.get('/conversations', requireAuth, async (req, res, next) => {
 router.get(
   '/:userId',
   requireAuth,
-  [
-    param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
-  ],
+  [param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer')],
   handleValidation,
   validatePagination,
   async (req, res, next) => {
@@ -73,7 +128,6 @@ router.get(
       const myId = req.user.id;
       const otherId = parseInt(req.params.userId);
 
-      // Prevent fetching messages with yourself
       if (otherId === myId) {
         return res.status(400).json({ success: false, message: 'Cannot fetch messages with yourself' });
       }
@@ -90,7 +144,7 @@ router.get(
           ],
         },
         include: [
-          { model: User, as: 'sender', attributes: ['id', 'name', 'profilePicture'] },
+          { model: User, as: 'sender', paranoid: false, attributes: ['id', 'name', 'profilePicture'] },
         ],
         limit: limitNum,
         offset,
@@ -125,12 +179,11 @@ router.post(
     try {
       const { receiverId, message, reservationId } = req.body;
 
-      // Prevent messaging yourself
       if (parseInt(receiverId) === req.user.id) {
         return res.status(400).json({ success: false, message: 'You cannot send a message to yourself' });
       }
 
-      const receiver = await User.findByPk(receiverId);
+      const receiver = await User.findByPk(receiverId, { attributes: ['id'] });
       if (!receiver) return res.status(404).json({ success: false, message: 'Recipient not found' });
 
       const chatMessage = await ChatMessage.create({

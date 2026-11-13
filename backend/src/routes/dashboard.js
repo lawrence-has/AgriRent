@@ -5,90 +5,143 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/dashboard/stats — admin
+// ── GET /api/dashboard/stats — admin ─────────────────────────────
+// OPTIMIZED: all counts run in parallel with Promise.all
 router.get('/stats', requireAuth, requireRole('admin'), async (req, res, next) => {
   try {
-    const [totalUsers, totalEquipment, totalReservations, activeRentals] = await Promise.all([
+    const [
+      totalUsers, totalEquipment, totalReservations,
+      activeRentals, pendingReservations, completedRentals,
+      recentReservations,
+    ] = await Promise.all([
       User.count(),
       Equipment.count(),
       Reservation.count(),
       Reservation.count({ where: { status: 'active' } }),
+      Reservation.count({ where: { status: 'pending' } }),
+      Reservation.count({ where: { status: 'completed' } }),
+      Reservation.findAll({
+        limit: 5,
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'status', 'totalCost', 'startDate', 'endDate', 'createdAt'],
+        include: [
+          { model: Equipment, as: 'equipment', paranoid: false, attributes: ['id', 'name'] },
+          { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name'] },
+        ],
+      }),
     ]);
 
-    const recentReservations = await Reservation.findAll({
-      limit: 5,
-      order: [['createdAt', 'DESC']],
-      include: [
-        { model: Equipment, as: 'equipment', attributes: ['id', 'name'] },
-        { model: User, as: 'farmer', attributes: ['id', 'name'] },
-      ],
+    res.json({
+      success: true,
+      totalUsers, totalEquipment, totalReservations,
+      activeRentals, pendingReservations, completedRentals,
+      recentReservations,
     });
-
-    res.json({ totalUsers, totalEquipment, totalReservations, activeRentals, recentReservations });
   } catch (error) {
     next(error);
   }
 });
 
-// GET /api/dashboard/owner-stats — equipment owner
+// ── GET /api/dashboard/owner-stats — equipment owner ─────────────
+// OPTIMIZED: equipment IDs fetched once; all counts run in parallel
 router.get('/owner-stats', requireAuth, requireRole('owner'), async (req, res, next) => {
   try {
-    const myEquipment = await Equipment.findAll({ where: { ownerId: req.user.id }, attributes: ['id'] });
+    // Fetch equipment IDs once
+    const myEquipment = await Equipment.findAll({
+      where: { ownerId: req.user.id },
+      attributes: ['id'],
+    });
     const equipmentIds = myEquipment.map((e) => e.id);
 
-    const [totalEquipment, activeRentals, pendingRequests, completedRentals] = await Promise.all([
+    if (!equipmentIds.length) {
+      return res.json({
+        success: true,
+        totalEquipment: 0, activeRentals: 0, pendingRequests: 0,
+        completedRentals: 0, totalRevenue: 0, recentReservations: [],
+      });
+    }
+
+    const eqFilter = { equipmentId: { [Op.in]: equipmentIds } };
+
+    // All DB calls run in parallel
+    const [
+      totalEquipment, activeRentals, pendingRequests, completedRentals,
+      revenueResult, recentReservations,
+    ] = await Promise.all([
       Equipment.count({ where: { ownerId: req.user.id } }),
-      Reservation.count({ where: { equipmentId: { [Op.in]: equipmentIds }, status: 'active' } }),
-      Reservation.count({ where: { equipmentId: { [Op.in]: equipmentIds }, status: 'pending' } }),
-      Reservation.count({ where: { equipmentId: { [Op.in]: equipmentIds }, status: 'completed' } }),
+      Reservation.count({ where: { ...eqFilter, status: 'active' } }),
+      Reservation.count({ where: { ...eqFilter, status: 'pending' } }),
+      Reservation.count({ where: { ...eqFilter, status: 'completed' } }),
+      // Use SUM in DB instead of fetching all rows and reducing in JS
+      Reservation.findOne({
+        where: { ...eqFilter, status: 'completed' },
+        attributes: [[require('sequelize').fn('SUM', require('sequelize').col('totalCost')), 'totalRevenue']],
+        raw: true,
+      }),
+      Reservation.findAll({
+        where: eqFilter,
+        limit: 5,
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'status', 'totalCost', 'startDate', 'endDate', 'createdAt'],
+        include: [
+          { model: Equipment, as: 'equipment', paranoid: false, attributes: ['id', 'name'] },
+          { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name'] },
+        ],
+      }),
     ]);
 
-    const revenueResult = await Reservation.findAll({
-      where: { equipmentId: { [Op.in]: equipmentIds }, status: 'completed' },
-      attributes: ['totalCost'],
-    });
-    const totalRevenue = revenueResult.reduce((sum, r) => sum + parseFloat(r.totalCost), 0);
+    const totalRevenue = parseFloat(revenueResult?.totalRevenue || 0);
 
-    const recentReservations = await Reservation.findAll({
-      where: { equipmentId: { [Op.in]: equipmentIds } },
-      limit: 5,
-      order: [['createdAt', 'DESC']],
-      include: [
-        { model: Equipment, as: 'equipment', attributes: ['id', 'name'] },
-        { model: User, as: 'farmer', attributes: ['id', 'name'] },
-      ],
+    res.json({
+      success: true,
+      totalEquipment, activeRentals, pendingRequests,
+      completedRentals, totalRevenue, recentReservations,
     });
-
-    res.json({ totalEquipment, activeRentals, pendingRequests, completedRentals, totalRevenue, recentReservations });
   } catch (error) {
     next(error);
   }
 });
 
-// GET /api/dashboard/farmer-stats — farmer
+// ── GET /api/dashboard/farmer-stats — farmer ─────────────────────
+// OPTIMIZED: all counts run in parallel; SUM done in DB not JS
 router.get('/farmer-stats', requireAuth, requireRole('farmer'), async (req, res, next) => {
   try {
-    const [totalReservations, activeRentals, pendingReservations, completedRentals] = await Promise.all([
-      Reservation.count({ where: { farmerId: req.user.id } }),
-      Reservation.count({ where: { farmerId: req.user.id, status: 'active' } }),
-      Reservation.count({ where: { farmerId: req.user.id, status: 'pending' } }),
-      Reservation.count({ where: { farmerId: req.user.id, status: 'completed' } }),
+    const farmerFilter = { farmerId: req.user.id };
+
+    const [
+      totalReservations, activeRentals, pendingReservations, completedRentals,
+      spentResult, recentReservations,
+    ] = await Promise.all([
+      Reservation.count({ where: farmerFilter }),
+      Reservation.count({ where: { ...farmerFilter, status: 'active' } }),
+      Reservation.count({ where: { ...farmerFilter, status: 'pending' } }),
+      Reservation.count({ where: { ...farmerFilter, status: 'completed' } }),
+      // SUM in DB — avoids loading all completed reservation rows into Node memory
+      Reservation.findOne({
+        where: { ...farmerFilter, status: 'completed' },
+        attributes: [[require('sequelize').fn('SUM', require('sequelize').col('totalCost')), 'totalSpent']],
+        raw: true,
+      }),
+      Reservation.findAll({
+        where: farmerFilter,
+        limit: 5,
+        order: [['createdAt', 'DESC']],
+        attributes: ['id', 'status', 'totalCost', 'startDate', 'endDate', 'createdAt'],
+        include: [{
+          model: Equipment, as: 'equipment',
+          paranoid: false,
+          attributes: ['id', 'name', 'category'],
+        }],
+      }),
     ]);
 
-    const spentResult = await Reservation.findAll({
-      where: { farmerId: req.user.id, status: 'completed' },
-      attributes: ['totalCost'],
-    });
-    const totalSpent = spentResult.reduce((sum, r) => sum + parseFloat(r.totalCost), 0);
+    const totalSpent = parseFloat(spentResult?.totalSpent || 0);
 
-    const recentReservations = await Reservation.findAll({
-      where: { farmerId: req.user.id },
-      limit: 5,
-      order: [['createdAt', 'DESC']],
-      include: [{ model: Equipment, as: 'equipment', attributes: ['id', 'name', 'category'] }],
+    res.json({
+      success: true,
+      totalReservations, activeRentals, pendingReservations,
+      completedRentals, totalSpent, recentReservations,
     });
-
-    res.json({ totalReservations, activeRentals, pendingReservations, completedRentals, totalSpent, recentReservations });
   } catch (error) {
     next(error);
   }
