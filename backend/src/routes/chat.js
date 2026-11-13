@@ -23,8 +23,8 @@ router.get('/conversations', requireAuth, async (req, res, next) => {
     });
 
     const partnerIds = new Set([
-      ...sent.map((m) => m.receiverId),
-      ...received.map((m) => m.senderId),
+      ...sent.map((m) => m.receiverId).filter((id) => id !== userId),
+      ...received.map((m) => m.senderId).filter((id) => id !== userId),
     ]);
 
     const conversations = await Promise.all(
