@@ -8,7 +8,7 @@
     "dev": "nodemon src/server.js",
     "seed": "node src/seed.js",
     "migrate": "node src/migrations/001_add_indexes.js",
-    "migrate:all": "node src/migrations/001_add_indexes.js && node src/migrations/002_add_cancellation_reason.js"
+    "migrate:all": "node src/migrations/001_add_indexes.js && node src/migrations/002_add_cancellation_reason.js && node src/migrations/003_transaction_unique_constraint.js"
   },
   "dependencies": {
     "bcryptjs": "2.4.3",

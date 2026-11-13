@@ -24,6 +24,7 @@ import BrowseEquipment from './pages/farmer/BrowseEquipment';
 import EquipmentDetailPage from './pages/farmer/EquipmentDetailPage';
 import MyReservations from './pages/farmer/MyReservations';
 import ReservationDetailPage from './pages/farmer/ReservationDetailPage';
+import MyRentals from './pages/farmer/MyRentals';
 
 // Owner
 import OwnerDashboard from './pages/owner/OwnerDashboard';
@@ -96,6 +97,7 @@ function App() {
                   <Route path="browse" element={<BrowseEquipment />} />
                   <Route path="reservations" element={<MyReservations />} />
                   <Route path="reservations/:id" element={<ReservationDetailPage />} />
+                  <Route path="rentals" element={<MyRentals />} />
                   <Route path="*" element={<Navigate to="dashboard" />} />
                 </Routes>
               </Layout>

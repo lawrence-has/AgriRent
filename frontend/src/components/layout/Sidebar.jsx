@@ -9,6 +9,7 @@ const farmerLinks = [
   { to: '/farmer/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/farmer/browse', icon: Tractor, label: 'Browse Equipment' },
   { to: '/farmer/reservations', icon: CalendarDays, label: 'My Reservations' },
+  { to: '/farmer/rentals', icon: ClipboardList, label: 'My Rentals' },
   { to: '/chat', icon: MessageSquare, label: 'Messages' },
 ];
 

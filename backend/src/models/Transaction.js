@@ -6,6 +6,9 @@ const Transaction = sequelize.define('Transaction', {
   reservationId: {
     type: DataTypes.INTEGER,
     allowNull: false,
+    // unique enforced at DB level — prevents duplicate transactions
+    // even under concurrent requests
+    unique: 'transactions_reservation_unique',
     references: { model: 'Reservations', key: 'id' },
   },
   releaseDate: { type: DataTypes.DATE, allowNull: true },
@@ -23,11 +26,9 @@ const Transaction = sequelize.define('Transaction', {
 }, {
   paranoid: true,
   indexes: [
-    // reservationId — joined on every transaction fetch
-    { fields: ['reservationId'], name: 'transactions_reservation_idx' },
-    // status — filtered in listing queries
+    // UNIQUE index on reservationId — DB-level duplicate prevention
+    { unique: true, fields: ['reservationId'], name: 'transactions_reservation_unique' },
     { fields: ['status'], name: 'transactions_status_idx' },
-    // paranoid filter
     { fields: ['deletedAt'], name: 'transactions_deleted_at_idx' },
   ],
 });
