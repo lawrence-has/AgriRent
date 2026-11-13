@@ -1,49 +1,94 @@
-const { Op } = require('sequelize');
-const { Reservation } = require('../models');
+const { Op, Transaction: SequelizeTransaction } = require('sequelize');
+const { Reservation, sequelize } = require('../models');
 
 /**
- * Check if equipment is available for the given date range.
- * Returns true if available, false if there's a conflict.
+ * AVAILABILITY POLICY:
+ * - 'confirmed' and 'active' reservations ALWAYS block dates.
+ * - 'pending' reservations are advisory only — they do NOT block dates
+ *   from being confirmed by the owner, but they DO prevent a second
+ *   pending reservation from being created for the same dates.
  *
- * OPTIMIZED: uses the composite index (equipmentId, status) added to Reservations.
- * The date overlap check uses the standard interval overlap formula:
- *   existing.startDate <= newEndDate AND existing.endDate >= newStartDate
- * This is more efficient than the previous 3-condition OR which prevented index use.
+ * This means:
+ *   - Farmer submits: check against confirmed+active+pending
+ *   - Owner confirms: check against confirmed+active only (re-check)
  */
-const isEquipmentAvailable = async (equipmentId, startDate, endDate, excludeReservationId = null) => {
+const HARD_BLOCK_STATUSES = ['confirmed', 'active'];
+const SOFT_BLOCK_STATUSES = ['confirmed', 'active', 'pending'];
+
+/**
+ * Standard interval overlap formula.
+ * Two ranges [a,b] and [c,d] overlap if: a <= d AND b >= c
+ */
+const buildOverlapWhere = (equipmentId, startDate, endDate, statuses, excludeId = null) => {
   const where = {
     equipmentId,
-    status: { [Op.in]: ['pending', 'confirmed', 'active'] },
-    // Standard overlap formula — MySQL can use the equipmentId+status composite index
-    // then filter dates. Much faster than the previous 3-way OR.
-    startDate: { [Op.lte]: endDate },   // existing starts before new ends
-    endDate: { [Op.gte]: startDate },   // existing ends after new starts
+    status: { [Op.in]: statuses },
+    startDate: { [Op.lte]: endDate },
+    endDate: { [Op.gte]: startDate },
   };
+  if (excludeId) where.id = { [Op.ne]: excludeId };
+  return where;
+};
 
-  if (excludeReservationId) {
-    where.id = { [Op.ne]: excludeReservationId };
-  }
+/**
+ * Check availability for CREATING a new reservation (farmer).
+ * Blocks if any confirmed, active, or pending reservation overlaps.
+ * Returns { available: bool, conflictingReservation: Reservation|null }
+ */
+const checkAvailabilityForCreate = async (equipmentId, startDate, endDate, t = null) => {
+  const options = {
+    where: buildOverlapWhere(equipmentId, startDate, endDate, SOFT_BLOCK_STATUSES),
+    attributes: ['id', 'startDate', 'endDate', 'status'],
+  };
+  if (t) options.transaction = t;
+
+  const conflict = await Reservation.findOne(options);
+  return { available: !conflict, conflictingReservation: conflict };
+};
+
+/**
+ * Check availability for CONFIRMING a reservation (owner).
+ * Re-checks ONLY against confirmed+active (not pending).
+ * Uses SELECT ... FOR UPDATE to lock conflicting rows and prevent
+ * concurrent confirmations of overlapping reservations.
+ *
+ * Must be called inside a Sequelize transaction.
+ */
+const checkAvailabilityForConfirm = async (equipmentId, startDate, endDate, excludeReservationId, t) => {
+  if (!t) throw new Error('checkAvailabilityForConfirm requires a transaction');
 
   const conflict = await Reservation.findOne({
-    where,
-    attributes: ['id'], // only fetch the id — no need for full row
+    where: buildOverlapWhere(equipmentId, startDate, endDate, HARD_BLOCK_STATUSES, excludeReservationId),
+    attributes: ['id', 'startDate', 'endDate', 'status'],
+    lock: t.LOCK.UPDATE, // row-level lock prevents concurrent confirmations
+    transaction: t,
   });
 
-  return !conflict;
+  return { available: !conflict, conflictingReservation: conflict };
+};
+
+/**
+ * Legacy function kept for backward compatibility.
+ * New code should use checkAvailabilityForCreate / checkAvailabilityForConfirm.
+ */
+const isEquipmentAvailable = async (equipmentId, startDate, endDate, excludeReservationId = null) => {
+  const result = await checkAvailabilityForCreate(equipmentId, startDate, endDate);
+  return result.available;
 };
 
 /**
  * Get all booked date ranges for an equipment (for calendar display).
- * Uses the (equipmentId, status) composite index.
+ * Returns confirmed+active (hard blocks) and pending (soft blocks) separately
+ * so the frontend can show them differently.
  */
 const getBookedDates = async (equipmentId) => {
   const reservations = await Reservation.findAll({
     where: {
       equipmentId,
-      status: { [Op.in]: ['pending', 'confirmed', 'active'] },
+      status: { [Op.in]: SOFT_BLOCK_STATUSES },
     },
-    attributes: ['id', 'startDate', 'endDate', 'status'], // only needed columns
-    order: [['startDate', 'ASC']], // sorted for frontend calendar rendering
+    attributes: ['id', 'startDate', 'endDate', 'status'],
+    order: [['startDate', 'ASC']],
   });
 
   return reservations.map((r) => ({
@@ -51,7 +96,15 @@ const getBookedDates = async (equipmentId) => {
     startDate: r.startDate,
     endDate: r.endDate,
     status: r.status,
+    isHardBlock: HARD_BLOCK_STATUSES.includes(r.status),
   }));
 };
 
-module.exports = { isEquipmentAvailable, getBookedDates };
+module.exports = {
+  isEquipmentAvailable,
+  checkAvailabilityForCreate,
+  checkAvailabilityForConfirm,
+  getBookedDates,
+  HARD_BLOCK_STATUSES,
+  SOFT_BLOCK_STATUSES,
+};
