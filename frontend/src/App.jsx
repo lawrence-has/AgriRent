@@ -26,6 +26,7 @@ import EquipmentDetailPage from './pages/farmer/EquipmentDetailPage';
 import MyReservations from './pages/farmer/MyReservations';
 import ReservationDetailPage from './pages/farmer/ReservationDetailPage';
 import MyRentals from './pages/farmer/MyRentals';
+import OfflineQueue from './pages/farmer/OfflineQueue';
 
 // Owner
 import OwnerDashboard from './pages/owner/OwnerDashboard';
@@ -111,6 +112,7 @@ function App() {
                   <Route path="reservations" element={<MyReservations />} />
                   <Route path="reservations/:id" element={<ReservationDetailPage />} />
                   <Route path="rentals" element={<MyRentals />} />
+                  <Route path="offline-queue" element={<OfflineQueue />} />
                   <Route path="*" element={<Navigate to="dashboard" />} />
                 </Routes>
               </Layout>

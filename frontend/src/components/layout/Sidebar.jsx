@@ -1,43 +1,47 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Tractor, CalendarDays, ClipboardList,
-  Users, MessageSquare, X, BarChart3, Wheat, Archive, Package,
+  Users, MessageSquare, X, BarChart3, Wheat, Archive, Package, WifiOff,
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
+import useOfflineQueueStore from '../../store/offlineQueueStore';
 
 const farmerLinks = [
-  { to: '/farmer/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/farmer/browse', icon: Tractor, label: 'Browse Equipment' },
-  { to: '/farmer/reservations', icon: CalendarDays, label: 'My Reservations' },
-  { to: '/farmer/rentals', icon: Package, label: 'My Rentals' },
-  { to: '/chat', icon: MessageSquare, label: 'Messages' },
+  { to: '/farmer/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/farmer/browse',       icon: Tractor,         label: 'Browse Equipment' },
+  { to: '/farmer/reservations', icon: CalendarDays,    label: 'My Reservations' },
+  { to: '/farmer/rentals',      icon: Package,         label: 'My Rentals' },
+  { to: '/farmer/offline-queue',icon: WifiOff,         label: 'Offline Queue', badgeKey: 'offline' },
+  { to: '/chat',                icon: MessageSquare,   label: 'Messages' },
 ];
 
 const ownerLinks = [
-  { to: '/owner/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/owner/equipment', icon: Tractor, label: 'My Equipment' },
-  { to: '/owner/reservations', icon: CalendarDays, label: 'Reservations' },
-  { to: '/owner/transactions', icon: ClipboardList, label: 'Transactions' },
-  { to: '/chat', icon: MessageSquare, label: 'Messages' },
+  { to: '/owner/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/owner/equipment',     icon: Tractor,         label: 'My Equipment' },
+  { to: '/owner/reservations',  icon: CalendarDays,    label: 'Reservations' },
+  { to: '/owner/transactions',  icon: ClipboardList,   label: 'Transactions' },
+  { to: '/chat',                icon: MessageSquare,   label: 'Messages' },
 ];
 
 const adminLinks = [
-  { to: '/admin/dashboard', icon: BarChart3, label: 'Dashboard' },
-  { to: '/admin/users', icon: Users, label: 'Users' },
-  { to: '/admin/equipment', icon: Tractor, label: 'Equipment' },
-  { to: '/admin/reservations', icon: CalendarDays, label: 'Reservations' },
-  { to: '/admin/archive', icon: Archive, label: 'Archive' },
+  { to: '/admin/dashboard',     icon: BarChart3,       label: 'Dashboard' },
+  { to: '/admin/users',         icon: Users,           label: 'Users' },
+  { to: '/admin/equipment',     icon: Tractor,         label: 'Equipment' },
+  { to: '/admin/reservations',  icon: CalendarDays,    label: 'Reservations' },
+  { to: '/admin/archive',       icon: Archive,         label: 'Archive' },
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user } = useAuthStore();
+  const { getCounts } = useOfflineQueueStore();
+  const offlineCounts = getCounts();
+  const pendingOffline = offlineCounts.queued + offlineCounts.syncing;
 
   const links =
     user?.role === 'admin' ? adminLinks :
     user?.role === 'owner' ? ownerLinks :
     farmerLinks;
 
-  // Role label shown at bottom of sidebar
   const roleLabel =
     user?.role === 'admin' ? 'Administrator' :
     user?.role === 'owner' ? 'Equipment Owner' :
@@ -83,7 +87,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
         {/* Nav links */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5" aria-label="Main navigation">
-          {links.map(({ to, icon: Icon, label }) => (
+          {links.map(({ to, icon: Icon, label, badgeKey }) => (
             <NavLink
               key={to}
               to={to}
@@ -94,7 +98,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                   ? 'bg-primary-50 text-primary-700 border border-primary-100'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`
               }
-              aria-current={({ isActive }) => (isActive ? 'page' : undefined)}
             >
               {({ isActive }) => (
                 <>
@@ -103,7 +106,15 @@ const Sidebar = ({ isOpen, onClose }) => {
                     className={isActive ? 'text-primary-600' : 'text-gray-400'}
                     aria-hidden="true"
                   />
-                  {label}
+                  <span className="flex-1">{label}</span>
+                  {badgeKey === 'offline' && pendingOffline > 0 && (
+                    <span
+                      className="bg-orange-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 font-medium"
+                      aria-label={`${pendingOffline} pending`}
+                    >
+                      {pendingOffline}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>
@@ -114,7 +125,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         <div className="p-4 border-t border-gray-100">
           <div className="flex items-center gap-2 px-2">
             <div className="w-2 h-2 bg-green-500 rounded-full" aria-hidden="true" />
-            <span className="text-xs text-gray-500 capitalize">{roleLabel}</span>
+            <span className="text-xs text-gray-500">{roleLabel}</span>
           </div>
         </div>
       </aside>

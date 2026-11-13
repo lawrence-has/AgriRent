@@ -9,6 +9,31 @@
  * Note: This runs in SW context — no DOM access, no window object.
  */
 
+// ── Push event handler — display the notification ───────────────
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { title: 'AgriRent', message: event.data?.text() || 'You have a new notification' };
+  }
+
+  const title = payload.title || 'AgriRent';
+  const options = {
+    body: payload.message || payload.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192-maskable.png',
+    data: payload.data || payload,
+    tag: payload.type || 'agrirent-notification',  // group same-type notifications
+    renotify: true,  // re-alert even if same tag
+    vibrate: [200, 100, 200],
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
 // ── Notification click handler ──────────────────────────────────
 // When user taps a push notification, navigate to the relevant page.
 self.addEventListener('notificationclick', (event) => {
