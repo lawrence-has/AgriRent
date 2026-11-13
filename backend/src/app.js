@@ -13,6 +13,7 @@ const notificationRoutes = require('./routes/notifications');
 const pushRoutes = require('./routes/pushSubscription');
 const chatRoutes = require('./routes/chat');
 const dashboardRoutes = require('./routes/dashboard');
+const archiveRoutes = require('./routes/archive');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -86,6 +87,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/archive', archiveRoutes);
 
 // ── Health check ─────────────────────────────────────────────────
 app.get('/api/health', (req, res) =>

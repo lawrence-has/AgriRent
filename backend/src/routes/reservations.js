@@ -11,6 +11,47 @@ const router = express.Router();
 
 const VALID_STATUSES = ['pending', 'confirmed', 'active', 'completed', 'cancelled'];
 
+// ── GET /api/reservations/history ── farmer/owner — full history ─
+// Returns all reservations including soft-deleted (archived) ones
+// Farmers see their own history; owners see their equipment's history
+router.get('/history', requireAuth, validatePagination, async (req, res, next) => {
+  try {
+    const { status, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const where = {};
+    if (status) where.status = status;
+
+    let include = [
+      { model: Equipment, as: 'equipment', paranoid: false, attributes: ['id', 'name', 'category', 'ownerId'] },
+      { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name', 'email'] },
+    ];
+
+    if (req.user.role === 'farmer') {
+      where.farmerId = req.user.id;
+    } else if (req.user.role === 'owner') {
+      include[0].where = { ownerId: req.user.id };
+      include[0].required = true;
+    }
+    // admin sees all
+
+    const { count, rows } = await Reservation.findAndCountAll({
+      paranoid: false, // include soft-deleted
+      where,
+      include,
+      limit: limitNum,
+      offset,
+      order: [['createdAt', 'DESC']],
+    });
+
+    res.json({ success: true, total: count, page: pageNum, reservations: rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── GET /api/reservations/my ─────────────────────────────────────
 router.get('/my', requireAuth, validatePagination, async (req, res, next) => {
   try {
@@ -32,7 +73,8 @@ router.get('/my', requireAuth, validatePagination, async (req, res, next) => {
       where,
       include: [{
         model: Equipment, as: 'equipment',
-        include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'phone'] }],
+        paranoid: false, // show history even if equipment was soft-deleted
+        include: [{ model: User, as: 'owner', paranoid: false, attributes: ['id', 'name', 'phone'] }],
       }],
       limit: limitNum,
       offset,
@@ -59,8 +101,8 @@ router.get('/', requireAuth, requireRole('admin', 'owner'), validatePagination, 
     }
 
     let include = [
-      { model: Equipment, as: 'equipment', attributes: ['id', 'name', 'category', 'dailyRate', 'ownerId'] },
-      { model: User, as: 'farmer', attributes: ['id', 'name', 'email', 'phone'] },
+      { model: Equipment, as: 'equipment', paranoid: false, attributes: ['id', 'name', 'category', 'dailyRate', 'ownerId'] },
+      { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name', 'email', 'phone'] },
     ];
 
     if (req.user.role === 'owner') {
@@ -90,8 +132,12 @@ router.get('/:id', requireAuth, validateId, async (req, res, next) => {
   try {
     const reservation = await Reservation.findByPk(req.params.id, {
       include: [
-        { model: Equipment, as: 'equipment', include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'phone'] }] },
-        { model: User, as: 'farmer', attributes: ['id', 'name', 'email', 'phone'] },
+        {
+          model: Equipment, as: 'equipment',
+          paranoid: false,
+          include: [{ model: User, as: 'owner', paranoid: false, attributes: ['id', 'name', 'phone'] }],
+        },
+        { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name', 'email', 'phone'] },
       ],
     });
     if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
@@ -205,7 +251,7 @@ router.put(
   async (req, res, next) => {
     try {
       const reservation = await Reservation.findByPk(req.params.id, {
-        include: [{ model: Equipment, as: 'equipment' }],
+        include: [{ model: Equipment, as: 'equipment', paranoid: false }],
       });
       if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
 

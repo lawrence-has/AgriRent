@@ -8,6 +8,49 @@ const { createNotification } = require('../services/notificationService');
 
 const router = express.Router();
 
+// ── GET /api/transactions/history ── completed transaction history ─
+// Returns all transactions including soft-deleted (archived) ones
+// Owners see their own equipment's history; admins see all
+router.get('/history', requireAuth, requireRole('admin', 'owner'), validatePagination, async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const equipmentInclude = {
+      model: Equipment,
+      as: 'equipment',
+      paranoid: false,
+      attributes: ['id', 'name', 'ownerId'],
+    };
+
+    if (req.user.role === 'owner') {
+      equipmentInclude.where = { ownerId: req.user.id };
+      equipmentInclude.required = true;
+    }
+
+    const { count, rows } = await Transaction.findAndCountAll({
+      paranoid: false, // include soft-deleted
+      include: [{
+        model: Reservation, as: 'reservation',
+        paranoid: false,
+        include: [
+          equipmentInclude,
+          { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name', 'phone'] },
+        ],
+      }],
+      limit: limitNum,
+      offset,
+      order: [['createdAt', 'DESC']],
+    });
+
+    res.json({ success: true, total: count, page: pageNum, transactions: rows });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── GET /api/transactions ── admin/owner ─────────────────────────
 router.get('/', requireAuth, requireRole('admin', 'owner'), validatePagination, async (req, res, next) => {
   try {
@@ -18,7 +61,7 @@ router.get('/', requireAuth, requireRole('admin', 'owner'), validatePagination, 
 
     // Build include with ownership scoping for owners
     const equipmentInclude = {
-      model: Equipment, as: 'equipment', attributes: ['id', 'name', 'ownerId'],
+      model: Equipment, as: 'equipment', paranoid: false, attributes: ['id', 'name', 'ownerId'],
     };
 
     // Owners only see transactions for their own equipment
@@ -30,9 +73,10 @@ router.get('/', requireAuth, requireRole('admin', 'owner'), validatePagination, 
     const { count, rows } = await Transaction.findAndCountAll({
       include: [{
         model: Reservation, as: 'reservation',
+        paranoid: false,
         include: [
           equipmentInclude,
-          { model: User, as: 'farmer', attributes: ['id', 'name', 'phone'] },
+          { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name', 'phone'] },
         ],
       }],
       limit: limitNum,
@@ -52,9 +96,10 @@ router.get('/:id', requireAuth, validateId, async (req, res, next) => {
     const transaction = await Transaction.findByPk(req.params.id, {
       include: [{
         model: Reservation, as: 'reservation',
+        paranoid: false,
         include: [
-          { model: Equipment, as: 'equipment' },
-          { model: User, as: 'farmer', attributes: ['id', 'name', 'phone'] },
+          { model: Equipment, as: 'equipment', paranoid: false },
+          { model: User, as: 'farmer', paranoid: false, attributes: ['id', 'name', 'phone'] },
         ],
       }],
     });

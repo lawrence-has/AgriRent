@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Tractor, CalendarDays, ClipboardList,
-  Users, MessageSquare, X, BarChart3, Wheat,
+  Users, MessageSquare, X, BarChart3, Wheat, Archive,
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 
@@ -25,6 +25,7 @@ const adminLinks = [
   { to: '/admin/users', icon: Users, label: 'Users' },
   { to: '/admin/equipment', icon: Tractor, label: 'Equipment' },
   { to: '/admin/reservations', icon: CalendarDays, label: 'Reservations' },
+  { to: '/admin/archive', icon: Archive, label: 'Archive' },
 ];
 
 const Sidebar = ({ isOpen, onClose }) => {

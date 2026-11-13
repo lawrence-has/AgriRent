@@ -37,6 +37,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import UserManagement from './pages/admin/UserManagement';
 import EquipmentManagement from './pages/admin/EquipmentManagement';
 import ReservationManagement from './pages/admin/ReservationManagement';
+import ArchiveManagement from './pages/admin/ArchiveManagement';
 
 // Chat
 import ChatPage from './pages/chat/ChatPage';
@@ -126,6 +127,7 @@ function App() {
                   <Route path="users" element={<UserManagement />} />
                   <Route path="equipment" element={<EquipmentManagement />} />
                   <Route path="reservations" element={<ReservationManagement />} />
+                  <Route path="archive" element={<ArchiveManagement />} />
                   <Route path="*" element={<Navigate to="dashboard" />} />
                 </Routes>
               </Layout>
