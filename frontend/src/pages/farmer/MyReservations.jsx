@@ -15,22 +15,38 @@ const MyReservations = () => {
   const [cancelId, setCancelId] = useState(null);
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['my-reservations'],
     queryFn: () => getMyReservations().then((r) => r.data),
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id) => updateReservation(id, { status: 'cancelled' }),
+    mutationFn: (id) =>
+      updateReservation(id, {
+        status: 'cancelled',
+        cancellationReason: 'Cancelled by farmer', // C6: cancellationReason field
+      }),
     onSuccess: () => {
       toast.success('Reservation cancelled');
-      queryClient.invalidateQueries(['my-reservations']);
+      queryClient.invalidateQueries({ queryKey: ['my-reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['farmer-stats'] });
       setCancelId(null);
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to cancel'),
+    onError: (err) => toast.error(err.response?.data?.message || err.message || 'Failed to cancel'),
   });
 
   if (isLoading) return <div className="py-20"><Spinner size="lg" /></div>;
+
+  if (isError) {
+    return (
+      <div className="space-y-5">
+        <h1 className="text-2xl font-bold text-gray-900">My Reservations</h1>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">
+          Failed to load reservations: {error?.message || 'Please try again.'}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

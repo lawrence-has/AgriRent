@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 
+/**
+ * Safe JSON parse — returns null instead of crashing if the value is corrupted.
+ */
+const safeParseJSON = (value) => {
+  try {
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+};
+
 const useAuthStore = create((set) => ({
-  user: JSON.parse(localStorage.getItem('agrirent_user') || 'null'),
+  user: safeParseJSON(localStorage.getItem('agrirent_user')),
   token: localStorage.getItem('agrirent_token') || null,
 
   login: (token, user) => {
@@ -17,7 +28,11 @@ const useAuthStore = create((set) => ({
   },
 
   setUser: (user) => {
-    localStorage.setItem('agrirent_user', JSON.stringify(user));
+    if (user) {
+      localStorage.setItem('agrirent_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('agrirent_user');
+    }
     set({ user });
   },
 }));

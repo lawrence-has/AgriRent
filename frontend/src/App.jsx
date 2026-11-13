@@ -46,10 +46,10 @@ import ChatPage from './pages/chat/ChatPage';
 // Other
 import NotFound from './pages/NotFound';
 
-// Initialize socket and load notification count on login
+// Initialize socket, load notification count, and handle session expiry
 const AppInit = () => {
   useSocket();
-  const { token } = useAuthStore();
+  const { token, logout } = useAuthStore();
   const { setNotifications } = useNotificationStore();
 
   useEffect(() => {
@@ -59,6 +59,17 @@ const AppInit = () => {
       .then((r) => setNotifications(r.data.notifications, r.data.unreadCount))
       .catch(() => {});
   }, [token]);
+
+  useEffect(() => {
+    // Listen for the auth:expired event dispatched by the axios interceptor
+    // This gives us a clean React-aware logout without full page reload
+    const handleExpired = () => {
+      logout();
+      destroySocket();
+    };
+    window.addEventListener('auth:expired', handleExpired);
+    return () => window.removeEventListener('auth:expired', handleExpired);
+  }, [logout]);
 
   return null;
 };

@@ -31,14 +31,30 @@ const ManageTransactions = () => {
 
   const releaseMutation = useMutation({
     mutationFn: (fd) => releaseEquipment(fd),
-    onSuccess: () => { toast.success('Equipment released'); queryClient.invalidateQueries(['transactions', 'confirmed-reservations']); setReleaseModal(null); resetRelease(); },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+    onSuccess: () => {
+      toast.success('Equipment released');
+      // Fix: invalidate each query key separately — passing an array as first arg
+      // only matches queries with that exact array key, not individual string keys
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['confirmed-reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-reservations'] });
+      setReleaseModal(null);
+      resetRelease();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || err.message || 'Failed to release equipment'),
   });
 
   const returnMutation = useMutation({
     mutationFn: ({ id, fd }) => returnEquipment(id, fd),
-    onSuccess: () => { toast.success('Return recorded'); queryClient.invalidateQueries(['transactions']); setReturnModal(null); resetReturn(); },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+    onSuccess: () => {
+      toast.success('Return recorded successfully');
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-stats'] });
+      setReturnModal(null);
+      resetReturn();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || err.message || 'Failed to record return'),
   });
 
   const buildFD = (values, reservationId) => {

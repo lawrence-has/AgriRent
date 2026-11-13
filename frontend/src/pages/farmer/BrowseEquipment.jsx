@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import { Search, AlertCircle } from 'lucide-react';
 import { getEquipment } from '../../api/equipment';
 import EquipmentList from '../../components/equipment/EquipmentList';
-import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 
 const categories = ['', 'tractor', 'cultivator', 'harvester', 'planter', 'sprayer', 'irrigation', 'other'];
@@ -11,14 +10,35 @@ const categories = ['', 'tractor', 'cultivator', 'harvester', 'planter', 'spraye
 const BrowseEquipment = () => {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['equipment', { search, category, page }],
-    queryFn: () => getEquipment({ search, category, page, limit: 12, status: 'available' }).then((r) => r.data),
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['equipment', { search, category, sortBy, page }],
+    queryFn: () =>
+      // Backend now excludes archived by default — no need to pass status: 'available'
+      getEquipment({ search, category, sortBy, page, limit: 12 }).then((r) => r.data),
+    keepPreviousData: true, // show previous page data while loading next page
   });
 
   const totalPages = Math.ceil((data?.total || 0) / 12);
+
+  if (isError) {
+    return (
+      <div className="space-y-5">
+        <h1 className="text-2xl font-bold text-gray-900">Browse Equipment</h1>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-5 flex items-start gap-3">
+          <AlertCircle size={20} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-800">Failed to load equipment</p>
+            <p className="text-sm text-red-600 mt-0.5">
+              {error?.message || 'Please check your connection and try again.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -43,8 +63,19 @@ const BrowseEquipment = () => {
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
           {categories.map((c) => (
-            <option key={c} value={c}>{c ? c.charAt(0).toUpperCase() + c.slice(1) : 'All Categories'}</option>
+            <option key={c} value={c}>
+              {c ? c.charAt(0).toUpperCase() + c.slice(1) : 'All Categories'}
+            </option>
           ))}
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="createdAt">Newest First</option>
+          <option value="dailyRate">Price: Low to High</option>
+          <option value="name">Name A–Z</option>
         </select>
       </div>
 
@@ -53,9 +84,23 @@ const BrowseEquipment = () => {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setPage(p => p - 1)} disabled={page === 1}>Previous</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPage((p) => p - 1)}
+            disabled={page === 1 || isLoading}
+          >
+            Previous
+          </Button>
           <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-          <Button variant="secondary" size="sm" onClick={() => setPage(p => p + 1)} disabled={page === totalPages}>Next</Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page === totalPages || isLoading}
+          >
+            Next
+          </Button>
         </div>
       )}
     </div>

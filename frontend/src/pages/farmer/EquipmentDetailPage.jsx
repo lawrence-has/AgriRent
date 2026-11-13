@@ -22,22 +22,32 @@ const EquipmentDetailPage = () => {
   const [notes, setNotes] = useState('');
   const [imgIdx, setImgIdx] = useState(0);
 
-  const { data: equipment, isLoading } = useQuery({
+  const { data: equipment, isLoading, isError } = useQuery({
     queryKey: ['equipment', id],
     queryFn: () => getEquipmentById(id).then((r) => r.data.equipment),
+    retry: 1,
   });
 
   const reserveMutation = useMutation({
     mutationFn: createReservation,
     onSuccess: () => {
-      toast.success('Reservation submitted!');
+      toast.success('Reservation submitted successfully!');
       navigate('/farmer/reservations');
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to reserve'),
+    onError: (err) => {
+      // Show specific conflict information if available
+      const msg = err.response?.data?.message || err.message || 'Failed to submit reservation';
+      toast.error(msg);
+    },
   });
 
   if (isLoading) return <div className="py-20"><Spinner size="lg" /></div>;
-  if (!equipment) return <p className="text-center text-gray-500 mt-20">Equipment not found</p>;
+  if (isError || !equipment) return (
+    <div className="max-w-4xl mx-auto py-20 text-center">
+      <p className="text-gray-500 text-lg mb-4">Equipment not found or is unavailable.</p>
+      <Button variant="outline" as={Link} to="/farmer/browse">← Back to Browse</Button>
+    </div>
+  );
 
   const days = startDate && endDate
     ? differenceInDays(parseISO(endDate), parseISO(startDate)) + 1
