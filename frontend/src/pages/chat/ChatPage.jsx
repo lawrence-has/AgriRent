@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, ArrowLeft, UserPlus, Search, X } from 'lucide-react';
+import { MessageSquare, UserPlus, Search, X } from 'lucide-react';
 import { getConversations } from '../../api/chat';
 import api from '../../api/axios';
 import useChatStore from '../../store/chatStore';
@@ -11,7 +11,13 @@ import EmptyState from '../../components/common/EmptyState';
 import Spinner from '../../components/common/Spinner';
 
 const ChatPage = () => {
-  const { activeConversation, setActiveConversation, conversations, setConversations, addConversation } = useChatStore();
+  const {
+    activeConversation,
+    setActiveConversation,
+    conversations,
+    setConversations,
+    addConversation,
+  } = useChatStore();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [showNewChat, setShowNewChat] = useState(false);
@@ -19,7 +25,7 @@ const ChatPage = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
 
-  // ── Load conversations from HTTP (initial load + background sync) ─
+  // ── Load conversations from HTTP ───────────────────────────────
   const { isLoading } = useQuery({
     queryKey: ['conversations'],
     queryFn: () =>
@@ -28,15 +34,10 @@ const ChatPage = () => {
         return r.data.conversations;
       }),
     staleTime: 1000 * 30,
-    // Refetch when window regains focus (e.g. user switches tabs)
     refetchOnWindowFocus: true,
   });
 
-  // No separate socket listeners needed here —
-  // useSocket already calls updateConversationOnMessage which updates the store,
-  // and the store update re-renders ConversationList automatically
-
-  // ── Search users to start a new conversation ──────────────────
+  // ── Search users ───────────────────────────────────────────────
   useEffect(() => {
     if (!userSearch.trim()) { setSearchResults([]); return; }
     const timer = setTimeout(async () => {
@@ -53,14 +54,13 @@ const ChatPage = () => {
     return () => clearTimeout(timer);
   }, [userSearch]);
 
-  const handleSelectConversation = (partner) => {
+  const handleSelect = (partner) => {
     setActiveConversation(partner);
     setShowNewChat(false);
   };
 
   const handleStartChat = (u) => {
     const partner = { id: u.id, name: u.name, role: u.role, profilePicture: u.profilePicture };
-    // Add to conversations list if not already there
     addConversation({ partner, lastMessage: null, unreadCount: 0 });
     setActiveConversation(partner);
     setShowNewChat(false);
@@ -75,13 +75,13 @@ const ChatPage = () => {
   return (
     <div className="h-[calc(100vh-80px)] flex rounded-xl overflow-hidden shadow-sm border border-gray-100 bg-white">
 
-      {/* ── Conversation sidebar ──────────────────────────────── */}
+      {/* ── Sidebar ───────────────────────────────────────────── */}
       <div className={`border-r border-gray-100 flex-shrink-0 flex flex-col
         ${activeConversation ? 'hidden md:flex md:w-80' : 'w-full md:w-80'}`}
       >
         {/* Header */}
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold">Messages</h2>
+          <h2 className="font-semibold text-gray-800">Messages</h2>
           <button
             onClick={() => setShowNewChat(!showNewChat)}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-primary-600 transition-colors"
@@ -91,7 +91,7 @@ const ChatPage = () => {
           </button>
         </div>
 
-        {/* New chat search panel */}
+        {/* New chat search */}
         {showNewChat && (
           <div className="border-b border-gray-100 p-3 bg-gray-50">
             <p className="text-xs text-gray-500 mb-2 font-medium">Start a new conversation</p>
@@ -105,7 +105,6 @@ const ChatPage = () => {
                 className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
-            {/* Results */}
             <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
               {searching && <p className="text-xs text-gray-400 text-center py-2">Searching...</p>}
               {!searching && userSearch && searchResults.length === 0 && (
@@ -130,22 +129,18 @@ const ChatPage = () => {
           </div>
         )}
 
-        {/* Conversation list */}
+        {/* Conversation list from store (live) */}
         {!conversations?.length && !showNewChat ? (
           <EmptyState
             icon={MessageSquare}
             title="No conversations yet"
-            description={
-              <span>
-                Click <strong>+</strong> above to start a conversation
-              </span>
-            }
+            description="Click + above to start a conversation"
           />
         ) : (
           <ConversationList
             conversations={conversations || []}
             activeId={activeConversation?.id}
-            onSelect={handleSelectConversation}
+            onSelect={handleSelect}
           />
         )}
       </div>
@@ -153,24 +148,13 @@ const ChatPage = () => {
       {/* ── Chat window ───────────────────────────────────────── */}
       <div className={`flex-1 flex flex-col ${!activeConversation ? 'hidden md:flex' : 'flex'}`}>
         {activeConversation ? (
-          <>
-            {/* Mobile back */}
-            <div className="md:hidden px-3 pt-2 pb-1 border-b border-gray-100">
-              <button
-                onClick={handleBack}
-                className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
-              >
-                <ArrowLeft size={16} /> Back to messages
-              </button>
-            </div>
-            <ChatWindow partner={activeConversation} />
-          </>
+          <ChatWindow partner={activeConversation} onBack={handleBack} />
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <EmptyState
               icon={MessageSquare}
               title="Select a conversation"
-              description="Pick someone from the list or start a new chat"
+              description="Pick someone from the list or click + to start a new chat"
             />
           </div>
         )}

@@ -8,6 +8,7 @@ import useSocket from './hooks/useSocket';
 import useAuthStore from './store/authStore';
 import useNotificationStore from './store/notificationStore';
 import { getNotifications } from './api/notifications';
+import { destroySocket } from './socket';
 
 // Auth
 import Login from './pages/auth/Login';

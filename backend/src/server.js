@@ -9,12 +9,14 @@ const PORT = process.env.PORT || 5000;
 
 const server = http.createServer(app);
 
-// Initialize socket.io
+// Initialize socket.io — allow all origins in dev, restrict in prod
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    credentials: true,
+    origin: '*',
+    credentials: false,
   },
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
 // Make io accessible in routes via req.app.get('io')
@@ -28,11 +30,8 @@ const start = async () => {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connected');
-
-    // sync({ alter: true }) updates tables to match models without dropping data
     await sequelize.sync({ alter: true });
     console.log('✅ Database synced');
-
     server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
     });
