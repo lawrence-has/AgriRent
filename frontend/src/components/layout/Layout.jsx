@@ -8,9 +8,12 @@ const Layout = ({ children }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar onMenuClick={() => setSidebarOpen(true)} />
-      <div className="flex">
+      <div className="flex min-h-[calc(100vh-57px)]">
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="flex-1 p-4 lg:p-6 min-w-0">{children}</main>
+        {/* Main content: constrain width on very wide screens, ensure it never bleeds under sidebar */}
+        <main className="flex-1 p-4 lg:p-6 min-w-0 max-w-7xl w-full">
+          {children}
+        </main>
       </div>
     </div>
   );
