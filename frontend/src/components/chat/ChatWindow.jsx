@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Send, Wifi, WifiOff, ArrowLeft } from 'lucide-react';
 import { getMessages, sendMessage as sendREST } from '../../api/chat';
 import { getSocket } from '../../socket';
@@ -8,30 +8,26 @@ import MessageBubble from './MessageBubble';
 import Spinner from '../common/Spinner';
 
 const ChatWindow = ({ partner, onBack }) => {
-  const [text, setText] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [connected, setConnected] = useState(false);
-  const [typing, setTyping] = useState(false);
-  const [msgs, setMsgs] = useState([]);
-
   const { user } = useAuthStore();
   const { clearUnread, onlineUserIds, updateConversationOnMessage } = useChatStore();
 
   const myId = Number(user?.id);
   const pid = Number(partner.id);
-  const pidRef = useRef(pid);
-  const myIdRef = useRef(myId);
-  const typingTimer = useRef(null);
-  const isTyping = useRef(false);
-  const bottomRef = useRef(null);
 
-  pidRef.current = pid;
-  myIdRef.current = myId;
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [connected, setConnected] = useState(!!getSocket()?.connected);
+  const [typingVisible, setTypingVisible] = useState(false);
+  const [msgs, setMsgs] = useState([]);
+
+  const bottomRef = useRef(null);
+  const typingTimer = useRef(null);
+  const isTypingRef = useRef(false);
 
   const isOnline = onlineUserIds.includes(pid);
 
-  // ── 1. Load history ─────────────────────────────────────────────
+  // ── Load history ────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
     setMsgs([]);
@@ -42,104 +38,117 @@ const ChatWindow = ({ partner, onBack }) => {
       .finally(() => setLoading(false));
   }, [pid]);
 
-  // ── 2. Socket listeners ─────────────────────────────────────────
+  // ── Socket ──────────────────────────────────────────────────────
   useEffect(() => {
-    // Poll until socket is ready (handles race condition on first mount)
-    let interval;
-    let socket = getSocket();
+    let mounted = true;
+    let checkInterval = null;
 
-    const attach = (s) => {
-      s.emit('join_chat', { withUserId: pid });
-      s.emit('mark_read', { withUserId: pid });
+    // Named handlers so we can remove exact listeners later
+    let handleConnect, handleDisconnect, handleNewMessage, handleMessageSent, handleTyping;
+
+    const setup = (socket) => {
+      if (!mounted) return;
+
+      setConnected(socket.connected);
+      socket.emit('join_chat', { withUserId: pid });
+      socket.emit('mark_read', { withUserId: pid });
       clearUnread(pid);
-      setConnected(s.connected);
 
-      const onConnect = () => setConnected(true);
-      const onDisconnect = () => setConnected(false);
+      handleConnect = () => { if (mounted) setConnected(true); };
+      handleDisconnect = () => { if (mounted) setConnected(false); };
 
-      const onNewMsg = (msg) => {
+      handleNewMessage = (msg) => {
+        if (!mounted) return;
         const sid = Number(msg.senderId);
         const rid = Number(msg.receiverId);
-        const p = pidRef.current;
-        const m = myIdRef.current;
-        // Only messages in this conversation
-        if (!((sid === p && rid === m) || (sid === m && rid === p))) return;
-        setMsgs((prev) => prev.some((x) => x.id === msg.id) ? prev : [...prev, msg]);
-        if (sid === p) {
-          s.emit('mark_read', { withUserId: p });
-          clearUnread(p);
-        }
-      };
-
-      const onSent = (msg) => {
-        // Replace optimistic temp with confirmed DB message
-        if (Number(msg.senderId) !== myIdRef.current || Number(msg.receiverId) !== pidRef.current) return;
+        const mine = sid === myId && rid === pid;
+        const theirs = sid === pid && rid === myId;
+        if (!mine && !theirs) return;
         setMsgs((prev) => {
-          const i = prev.findIndex(
-            (m) => String(m.id).startsWith('temp_') &&
-              Number(m.senderId) === Number(msg.senderId) &&
-              m.message === msg.message
-          );
-          if (i !== -1) { const n = [...prev]; n[i] = msg; return n; }
-          return prev.some((m) => m.id === msg.id) ? prev : [...prev, msg];
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
         });
-        updateConversationOnMessage(msg, myIdRef.current);
+        if (theirs) {
+          socket.emit('mark_read', { withUserId: pid });
+          clearUnread(pid);
+        }
+        updateConversationOnMessage(msg, myId);
       };
 
-      const onTyping = ({ fromUserId, isTyping: t }) => {
-        if (Number(fromUserId) === pidRef.current) setTyping(t);
+      handleMessageSent = (msg) => {
+        if (!mounted) return;
+        if (Number(msg.senderId) !== myId || Number(msg.receiverId) !== pid) return;
+        setMsgs((prev) => {
+          const idx = prev.findIndex(
+            (m) => String(m.id).startsWith('temp_') &&
+              m.message === msg.message &&
+              Number(m.senderId) === myId
+          );
+          if (idx !== -1) {
+            const copy = [...prev];
+            copy[idx] = msg;
+            return copy;
+          }
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        updateConversationOnMessage(msg, myId);
       };
 
-      s.on('connect', onConnect);
-      s.on('disconnect', onDisconnect);
-      s.on('new_message', onNewMsg);
-      s.on('message_sent', onSent);
-      s.on('typing', onTyping);
-
-      return () => {
-        s.off('connect', onConnect);
-        s.off('disconnect', onDisconnect);
-        s.off('new_message', onNewMsg);
-        s.off('message_sent', onSent);
-        s.off('typing', onTyping);
+      handleTyping = ({ fromUserId, isTyping }) => {
+        if (!mounted) return;
+        if (Number(fromUserId) === pid) setTypingVisible(isTyping);
       };
+
+      socket.on('connect', handleConnect);
+      socket.on('disconnect', handleDisconnect);
+      socket.on('new_message', handleNewMessage);
+      socket.on('message_sent', handleMessageSent);
+      socket.on('typing', handleTyping);
     };
 
-    if (socket?.connected) {
-      const cleanup = attach(socket);
-      return cleanup;
+    const trySetup = () => {
+      const socket = getSocket();
+      if (socket) {
+        clearInterval(checkInterval);
+        setup(socket);
+      }
+    };
+
+    trySetup();
+    if (!getSocket()) {
+      checkInterval = setInterval(trySetup, 300);
     }
 
-    // Socket not ready yet — retry every 200ms until it is
-    let cleanup = null;
-    interval = setInterval(() => {
-      socket = getSocket();
-      if (socket?.connected) {
-        clearInterval(interval);
-        cleanup = attach(socket);
-      }
-    }, 200);
-
     return () => {
-      clearInterval(interval);
-      cleanup?.();
+      mounted = false;
+      clearInterval(checkInterval);
+      const socket = getSocket();
+      if (socket) {
+        socket.off('connect', handleConnect);
+        socket.off('disconnect', handleDisconnect);
+        socket.off('new_message', handleNewMessage);
+        socket.off('message_sent', handleMessageSent);
+        socket.off('typing', handleTyping);
+      }
     };
-  }, [pid]);
+  }, [pid, myId]);
 
-  // ── 3. Auto-scroll ───────────────────────────────────────────────
+  // ── Auto-scroll ──────────────────────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [msgs.length]);
 
-  // ── 4. Send ──────────────────────────────────────────────────────
-  const send = useCallback(() => {
+  // ── Send ─────────────────────────────────────────────────────────
+  const send = () => {
     const t = text.trim();
     if (!t || sending) return;
+    setText('');
 
     const socket = getSocket();
 
     if (socket?.connected) {
-      // Show immediately (optimistic)
+      // Add optimistic immediately
       const temp = {
         id: `temp_${Date.now()}`,
         senderId: myId,
@@ -151,70 +160,69 @@ const ChatWindow = ({ partner, onBack }) => {
       };
       setMsgs((prev) => [...prev, temp]);
       socket.emit('send_message', { receiverId: pid, message: t });
-      setText('');
+      // Stop typing
       clearTimeout(typingTimer.current);
-      isTyping.current = false;
+      isTypingRef.current = false;
       socket.emit('typing', { toUserId: pid, isTyping: false });
     } else {
-      // REST fallback
+      // No socket — use REST
       setSending(true);
       sendREST({ receiverId: pid, message: t })
         .then(({ data }) => {
-          setMsgs((prev) => [...prev, { ...data.message, sender: { id: myId, name: user.name } }]);
-          setText('');
+          setMsgs((prev) => [
+            ...prev,
+            { ...data.message, sender: { id: myId, name: user.name } },
+          ]);
+          updateConversationOnMessage(data.message, myId);
         })
         .catch(console.error)
         .finally(() => setSending(false));
     }
-  }, [text, sending, pid, myId, user]);
+  };
 
-  const onKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
+  const onKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  };
 
   const onChange = (e) => {
     setText(e.target.value);
     const socket = getSocket();
     if (!socket?.connected) return;
-    if (!isTyping.current) {
-      isTyping.current = true;
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
       socket.emit('typing', { toUserId: pid, isTyping: true });
     }
     clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {
-      isTyping.current = false;
-      socket?.emit('typing', { toUserId: pid, isTyping: false });
+      isTypingRef.current = false;
+      socket.emit('typing', { toUserId: pid, isTyping: false });
     }, 1500);
   };
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center gap-3">
-        {/* Back button — always visible */}
+      <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center gap-2">
         <button
           onClick={onBack}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
-          title="Back to messages"
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors shrink-0"
         >
           <ArrowLeft size={18} />
         </button>
 
-        <div className="relative">
-          <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center font-semibold text-primary-700 text-sm">
+        <div className="relative shrink-0">
+          <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center font-bold text-primary-700 text-sm">
             {partner.name?.[0]?.toUpperCase()}
           </div>
-          <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white
-            ${isOnline ? 'bg-green-500' : 'bg-gray-300'}`} />
+          <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-500' : 'bg-gray-300'}`} />
         </div>
 
-        <div className="flex-1">
-          <p className="font-semibold text-sm text-gray-900">{partner.name}</p>
-          <p className="text-xs text-gray-500 capitalize">
-            {partner.role} · {isOnline ? 'Online' : 'Offline'}
-          </p>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-gray-900 truncate">{partner.name}</p>
+          <p className="text-xs text-gray-500 capitalize">{partner.role} · {isOnline ? 'Online' : 'Offline'}</p>
         </div>
 
-        <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium
-          ${connected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+        <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium shrink-0 ${connected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
           {connected ? <><Wifi size={11} /> Live</> : <><WifiOff size={11} /> Reconnecting...</>}
         </div>
       </div>
@@ -226,18 +234,14 @@ const ChatWindow = ({ partner, onBack }) => {
           : msgs.length === 0
             ? <p className="text-center text-sm text-gray-400 py-10">No messages yet. Say hello!</p>
             : msgs.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  isMine={Number(m.senderId) === myId}
-                />
+                <MessageBubble key={m.id} message={m} isMine={Number(m.senderId) === myId} />
               ))
         }
         <div ref={bottomRef} />
       </div>
 
-      {/* Typing indicator */}
-      {typing && (
+      {/* Typing */}
+      {typingVisible && (
         <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center gap-2">
           <div className="flex gap-0.5">
             <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
