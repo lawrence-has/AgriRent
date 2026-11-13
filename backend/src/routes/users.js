@@ -64,9 +64,22 @@ router.get('/', requireAuth, requireRole('admin'), validatePagination, async (re
 });
 
 // ── GET /api/users/:id ───────────────────────────────────────────
+// Users can view their own profile (full).
+// Authenticated users can view another user's public profile (limited fields).
+// Admins can view any profile in full.
 router.get('/:id', requireAuth, validateId, async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.params.id);
+    const requestedId = parseInt(req.params.id);
+    const isSelf = requestedId === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+
+    const user = await User.findByPk(requestedId, {
+      // Always exclude password (handled by toJSON), but also limit fields for non-owners
+      attributes: isAdmin || isSelf
+        ? ['id', 'name', 'email', 'role', 'phone', 'address', 'profilePicture', 'createdAt']
+        : ['id', 'name', 'role', 'profilePicture'], // public profile — no email/phone/address
+    });
+
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     res.json({ success: true, user });
   } catch (error) {

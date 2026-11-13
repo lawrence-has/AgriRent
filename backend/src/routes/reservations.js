@@ -95,6 +95,17 @@ router.get('/:id', requireAuth, validateId, async (req, res, next) => {
       ],
     });
     if (!reservation) return res.status(404).json({ success: false, message: 'Reservation not found' });
+
+    // IDOR protection: farmers can only view their own reservations
+    // Owners can only view reservations for their equipment
+    // Admins can view all
+    if (req.user.role === 'farmer' && reservation.farmerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to view this reservation' });
+    }
+    if (req.user.role === 'owner' && reservation.equipment?.ownerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to view this reservation' });
+    }
+
     res.json({ success: true, reservation });
   } catch (error) {
     next(error);

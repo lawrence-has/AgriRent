@@ -16,11 +16,22 @@ router.get('/', requireAuth, requireRole('admin', 'owner'), validatePagination, 
     const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 10));
     const offset = (pageNum - 1) * limitNum;
 
+    // Build include with ownership scoping for owners
+    const equipmentInclude = {
+      model: Equipment, as: 'equipment', attributes: ['id', 'name', 'ownerId'],
+    };
+
+    // Owners only see transactions for their own equipment
+    if (req.user.role === 'owner') {
+      equipmentInclude.where = { ownerId: req.user.id };
+      equipmentInclude.required = true;
+    }
+
     const { count, rows } = await Transaction.findAndCountAll({
       include: [{
         model: Reservation, as: 'reservation',
         include: [
-          { model: Equipment, as: 'equipment', attributes: ['id', 'name', 'ownerId'] },
+          equipmentInclude,
           { model: User, as: 'farmer', attributes: ['id', 'name', 'phone'] },
         ],
       }],
@@ -48,6 +59,18 @@ router.get('/:id', requireAuth, validateId, async (req, res, next) => {
       }],
     });
     if (!transaction) return res.status(404).json({ success: false, message: 'Transaction not found' });
+
+    // IDOR protection
+    const equipmentOwnerId = transaction.reservation?.equipment?.ownerId;
+    const farmerId = transaction.reservation?.farmerId;
+
+    if (req.user.role === 'owner' && equipmentOwnerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to view this transaction' });
+    }
+    if (req.user.role === 'farmer' && farmerId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to view this transaction' });
+    }
+
     res.json({ success: true, transaction });
   } catch (error) {
     next(error);
