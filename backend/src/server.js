@@ -7,6 +7,18 @@ const { initSocket } = require('./socket');
 
 const PORT = process.env.PORT || 5000;
 
+// ── Global error guards ──────────────────────────────────────────
+// Prevent the process from crashing on unhandled async errors
+process.on('unhandledRejection', (reason) => {
+  console.error('[UnhandledRejection]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[UncaughtException]', err.message);
+  // Give active requests a moment to finish before exiting
+  setTimeout(() => process.exit(1), 1000);
+});
+
 const server = http.createServer(app);
 
 // Initialize socket.io — allow all origins in dev, restrict in prod

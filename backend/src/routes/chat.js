@@ -1,16 +1,17 @@
 const express = require('express');
 const { Op } = require('sequelize');
+const { body, param } = require('express-validator');
 const { ChatMessage, User } = require('../models');
 const { requireAuth } = require('../middleware/auth');
+const { handleValidation, validatePagination } = require('../middleware/validate');
 
 const router = express.Router();
 
-// GET /api/chat/conversations — list unique conversation partners
+// ── GET /api/chat/conversations ──────────────────────────────────
 router.get('/conversations', requireAuth, async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Get all unique users this user has chatted with
     const sent = await ChatMessage.findAll({
       where: { senderId: userId },
       attributes: ['receiverId'],
@@ -32,6 +33,9 @@ router.get('/conversations', requireAuth, async (req, res, next) => {
         const partner = await User.findByPk(partnerId, {
           attributes: ['id', 'name', 'profilePicture', 'role'],
         });
+        // Skip deleted users
+        if (!partner) return null;
+
         const lastMessage = await ChatMessage.findOne({
           where: {
             [Op.or]: [
@@ -48,78 +52,112 @@ router.get('/conversations', requireAuth, async (req, res, next) => {
       })
     );
 
-    res.json({ conversations });
+    res.json({ success: true, conversations: conversations.filter(Boolean) });
   } catch (error) {
     next(error);
   }
 });
 
-// GET /api/chat/:userId — get messages between current user and another user
-router.get('/:userId', requireAuth, async (req, res, next) => {
-  try {
-    const { page = 1, limit = 50 } = req.query;
-    const myId = req.user.id;
-    const otherId = parseInt(req.params.userId);
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+// ── GET /api/chat/:userId ────────────────────────────────────────
+router.get(
+  '/:userId',
+  requireAuth,
+  [
+    param('userId').isInt({ min: 1 }).withMessage('userId must be a positive integer'),
+  ],
+  handleValidation,
+  validatePagination,
+  async (req, res, next) => {
+    try {
+      const { page = 1, limit = 50 } = req.query;
+      const myId = req.user.id;
+      const otherId = parseInt(req.params.userId);
 
-    const { count, rows } = await ChatMessage.findAndCountAll({
-      where: {
-        [Op.or]: [
-          { senderId: myId, receiverId: otherId },
-          { senderId: otherId, receiverId: myId },
+      // Prevent fetching messages with yourself
+      if (otherId === myId) {
+        return res.status(400).json({ success: false, message: 'Cannot fetch messages with yourself' });
+      }
+
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 50));
+      const offset = (pageNum - 1) * limitNum;
+
+      const { count, rows } = await ChatMessage.findAndCountAll({
+        where: {
+          [Op.or]: [
+            { senderId: myId, receiverId: otherId },
+            { senderId: otherId, receiverId: myId },
+          ],
+        },
+        include: [
+          { model: User, as: 'sender', attributes: ['id', 'name', 'profilePicture'] },
         ],
-      },
-      include: [
-        { model: User, as: 'sender', attributes: ['id', 'name', 'profilePicture'] },
-      ],
-      limit: parseInt(limit),
-      offset,
-      order: [['createdAt', 'ASC']],
-    });
-
-    // Mark received messages as read
-    await ChatMessage.update(
-      { isRead: true },
-      { where: { senderId: otherId, receiverId: myId, isRead: false } }
-    );
-
-    res.json({ total: count, page: parseInt(page), messages: rows });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// POST /api/chat — send a message (REST fallback; primary is socket.io)
-router.post('/', requireAuth, async (req, res, next) => {
-  try {
-    const { receiverId, message, reservationId } = req.body;
-    if (!receiverId || !message) {
-      return res.status(400).json({ message: 'receiverId and message are required' });
-    }
-
-    const receiver = await User.findByPk(receiverId);
-    if (!receiver) return res.status(404).json({ message: 'Recipient not found' });
-
-    const chatMessage = await ChatMessage.create({
-      senderId: req.user.id,
-      receiverId,
-      message,
-      reservationId: reservationId || null,
-    });
-
-    const io = req.app.get('io');
-    if (io) {
-      const roomId = [req.user.id, receiverId].sort().join('_');
-      io.to(`chat_${roomId}`).emit('new_message', {
-        ...chatMessage.toJSON(),
-        sender: { id: req.user.id, name: req.user.name, profilePicture: req.user.profilePicture },
+        limit: limitNum,
+        offset,
+        order: [['createdAt', 'ASC']],
       });
-    }
 
-    res.status(201).json({ message: chatMessage });
-  } catch (error) {
-    next(error);
+      // Mark received messages as read
+      await ChatMessage.update(
+        { isRead: true },
+        { where: { senderId: otherId, receiverId: myId, isRead: false } }
+      );
+
+      res.json({ success: true, total: count, page: pageNum, messages: rows });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
+
+// ── POST /api/chat ── REST fallback ──────────────────────────────
+router.post(
+  '/',
+  requireAuth,
+  [
+    body('receiverId').isInt({ min: 1 }).withMessage('receiverId must be a positive integer'),
+    body('message').trim().notEmpty().withMessage('Message cannot be empty')
+      .isLength({ max: 2000 }).withMessage('Message must be 2000 characters or less'),
+    body('reservationId').optional().isInt({ min: 1 }).withMessage('reservationId must be a positive integer'),
+  ],
+  handleValidation,
+  async (req, res, next) => {
+    try {
+      const { receiverId, message, reservationId } = req.body;
+
+      // Prevent messaging yourself
+      if (parseInt(receiverId) === req.user.id) {
+        return res.status(400).json({ success: false, message: 'You cannot send a message to yourself' });
+      }
+
+      const receiver = await User.findByPk(receiverId);
+      if (!receiver) return res.status(404).json({ success: false, message: 'Recipient not found' });
+
+      const chatMessage = await ChatMessage.create({
+        senderId: req.user.id,
+        receiverId,
+        message: message.trim(),
+        reservationId: reservationId || null,
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        const roomId = [req.user.id, receiverId].sort().join('_');
+        io.to(`chat_${roomId}`).emit('new_message', {
+          ...chatMessage.toJSON(),
+          sender: {
+            id: req.user.id,
+            name: req.user.name,
+            profilePicture: req.user.profilePicture,
+          },
+        });
+      }
+
+      res.status(201).json({ success: true, message: chatMessage });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 module.exports = router;
