@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#16a34a" />
+  <title>Offline – AgriRent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0fdf4;
+      color: #1a2e1a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: white;
+      border-radius: 1.25rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 2.5rem 2rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+    .icon {
+      width: 64px;
+      height: 64px;
+      background: #dcfce7;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+    }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; color: #111827; }
+    p { font-size: 0.95rem; color: #6b7280; line-height: 1.6; margin-bottom: 1.5rem; }
+    .features {
+      background: #f9fafb;
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      text-align: left;
+      margin-bottom: 1.5rem;
+    }
+    .features p { margin-bottom: 0.25rem; font-size: 0.85rem; }
+    .features .label { font-weight: 600; color: #374151; margin-bottom: 0.5rem; }
+    .features li { font-size: 0.85rem; color: #6b7280; margin-left: 1rem; margin-bottom: 0.2rem; }
+    .btn {
+      display: inline-block;
+      background: #16a34a;
+      color: white;
+      border: none;
+      border-radius: 0.6rem;
+      padding: 0.65rem 1.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #15803d; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <!-- Wheat icon SVG -->
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 22 16 8"/><path d="M3.47 12.53 5 11l1.53 1.53a3.5 3.5 0 0 1 0 4.94L5 19l-1.53-1.53a3.5 3.5 0 0 1 0-4.94z"/>
+        <path d="M7.47 8.53 9 7l1.53 1.53a3.5 3.5 0 0 1 0 4.94L9 15l-1.53-1.53a3.5 3.5 0 0 1 0-4.94z"/>
+        <path d="M11.47 4.53 13 3l1.53 1.53a3.5 3.5 0 0 1 0 4.94L13 11l-1.53-1.53a3.5 3.5 0 0 1 0-4.94z"/>
+        <path d="M20 2h2v2a4 4 0 0 1-4 4h-2V6a4 4 0 0 1 4-4z"/>
+        <path d="M11.47 17.47 13 19l-1.53 1.53a3.5 3.5 0 0 1-4.94 0L5 19l1.53-1.53a3.5 3.5 0 0 1 4.94 0z"/>
+      </svg>
+    </div>
+    <h1>You're Offline</h1>
+    <p>No internet connection detected. Here's what you can still access:</p>
+
+    <div class="features">
+      <p class="label">Available Offline:</p>
+      <ul>
+        <li>Previously viewed equipment listings</li>
+        <li>Equipment details you've browsed</li>
+        <li>Equipment availability calendars</li>
+        <li>Equipment photos you've seen</li>
+      </ul>
+    </div>
+
+    <p style="font-size:0.82rem;color:#9ca3af;margin-bottom:1.25rem">
+      Reservations, chat, and account management require an internet connection.
+      Any reservation you submit offline will be sent automatically when you reconnect.
+    </p>
+
+    <button class="btn" onclick="window.history.back()">← Go Back</button>
+    &nbsp;
+    <button class="btn" style="background:#e5e7eb;color:#374151;" onclick="window.location.reload()">
+      Retry
+    </button>
+  </div>
+</body>
+</html>

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import NetworkStatus from './components/common/NetworkStatus';
 import useSocket from './hooks/useSocket';
 import useAuthStore from './store/authStore';
 import useNotificationStore from './store/notificationStore';
@@ -78,6 +79,7 @@ function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
+        <NetworkStatus />
         <AppInit />
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         <Routes>
