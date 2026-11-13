@@ -67,6 +67,8 @@ export default defineConfig({
       // ── Workbox config ──────────────────────────────────────────
       strategies: 'generateSW',
       workbox: {
+        // Import our custom push/click handler into the generated SW
+        importScripts: ['sw-push-handler.js'],
         // ── App shell precaching ──────────────────────────────────
         // Precache all static assets built by Vite (JS, CSS, HTML, icons)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],

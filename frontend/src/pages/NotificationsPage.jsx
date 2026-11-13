@@ -1,10 +1,16 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
-import { Bell, Trash2, CheckCheck, CalendarDays, Package, MessageSquare, Settings } from 'lucide-react';
+import {
+  Bell, BellOff, Trash2, CheckCheck,
+  CalendarDays, Package, MessageSquare, Settings, AlertTriangle,
+} from 'lucide-react';
 import { getNotifications, markAllRead, markNotificationRead, deleteNotification } from '../api/notifications';
 import useNotificationStore from '../store/notificationStore';
+import useAuthStore from '../store/authStore';
 import { getSocket } from '../hooks/useSocket';
+import usePushNotification from '../hooks/usePushNotification';
 import Button from '../components/common/Button';
 import Spinner from '../components/common/Spinner';
 import EmptyState from '../components/common/EmptyState';
@@ -16,11 +22,49 @@ const typeConfig = {
   system:       { icon: Settings,     bg: 'bg-gray-100', text: 'text-gray-600', label: 'System' },
 };
 
+/**
+ * Returns the target URL for a notification based on its type and data.
+ * Used for both notification click navigation and future deep-linking.
+ */
+const getNotificationUrl = (notification, userRole) => {
+  const { type, data = {} } = notification;
+
+  if (type === 'reservation') {
+    if (data.reservationId) {
+      if (userRole === 'farmer') return `/farmer/reservations/${data.reservationId}`;
+      if (userRole === 'owner') return `/owner/reservations`;
+    }
+    if (userRole === 'farmer') return '/farmer/reservations';
+    if (userRole === 'owner') return '/owner/reservations';
+    return '/admin/reservations';
+  }
+
+  if (type === 'transaction') {
+    if (userRole === 'farmer') return '/farmer/rentals';
+    if (userRole === 'owner') return '/owner/transactions';
+    return '/admin/reservations';
+  }
+
+  if (type === 'chat') return '/chat';
+
+  return null;
+};
+
 const NotificationsPage = () => {
   const queryClient = useQueryClient();
-  const { notifications, unreadCount, setNotifications, markRead, markAllRead: markAllStore, removeNotification } = useNotificationStore();
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const {
+    notifications, unreadCount,
+    setNotifications, markRead, markAllRead: markAllStore, removeNotification,
+  } = useNotificationStore();
 
-  // ── Fetch from HTTP ────────────────────────────────────────────
+  const {
+    isSubscribed, isSupported, isLoading: pushLoading,
+    permissionState, error: pushError, subscribe, unsubscribe,
+  } = usePushNotification();
+
+  // ── Fetch notifications ────────────────────────────────────────
   const { isLoading } = useQuery({
     queryKey: ['all-notifications'],
     queryFn: () =>
@@ -31,7 +75,7 @@ const NotificationsPage = () => {
     staleTime: 0,
   });
 
-  // ── Live update when socket fires ──────────────────────────────
+  // ── Live update on socket ──────────────────────────────────────
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -40,6 +84,7 @@ const NotificationsPage = () => {
     return () => socket.off('notification', refresh);
   }, []);
 
+  // ── Mutations ──────────────────────────────────────────────────
   const markAllMutation = useMutation({
     mutationFn: markAllRead,
     onSuccess: () => {
@@ -65,12 +110,21 @@ const NotificationsPage = () => {
     },
   });
 
+  // ── Handle notification click: mark read + navigate ────────────
+  const handleNotificationClick = (notification) => {
+    if (!notification.isRead) {
+      markReadMutation.mutate(notification.id);
+    }
+    const url = getNotificationUrl(notification, user?.role);
+    if (url) navigate(url);
+  };
+
   if (isLoading) return <div className="py-20"><Spinner size="lg" /></div>;
 
   return (
     <div className="max-w-2xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
           {unreadCount > 0 && (
@@ -89,30 +143,83 @@ const NotificationsPage = () => {
         )}
       </div>
 
-      {/* List */}
+      {/* Push notification quick toggle */}
+      {isSupported && (
+        <div className={`rounded-xl border px-4 py-3 flex items-center justify-between gap-3
+          ${isSubscribed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            {isSubscribed
+              ? <Bell size={16} className="text-green-700 shrink-0" aria-hidden="true" />
+              : <BellOff size={16} className="text-gray-500 shrink-0" aria-hidden="true" />
+            }
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-800 truncate">
+                {isSubscribed ? 'Push notifications on' : 'Push notifications off'}
+              </p>
+              {permissionState === 'denied' && (
+                <p className="text-xs text-red-600 mt-0.5 flex items-center gap-1">
+                  <AlertTriangle size={11} /> Blocked in browser settings
+                </p>
+              )}
+              {pushError && permissionState !== 'denied' && (
+                <p className="text-xs text-red-600 mt-0.5 truncate">{pushError}</p>
+              )}
+            </div>
+          </div>
+          {permissionState !== 'denied' && (
+            <Button
+              variant={isSubscribed ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={isSubscribed ? unsubscribe : subscribe}
+              loading={pushLoading}
+              disabled={pushLoading}
+              className="shrink-0"
+            >
+              {isSubscribed ? 'Disable' : 'Enable'}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Notification list */}
       {!notifications?.length ? (
-        <EmptyState icon={Bell} title="No notifications" description="You're all caught up!" />
+        <EmptyState
+          icon={Bell}
+          title="No notifications"
+          description="You're all caught up! Notifications appear here when there's activity on your reservations or equipment."
+        />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
           {notifications.map((n) => {
             const cfg = typeConfig[n.type] || typeConfig.system;
             const Icon = cfg.icon;
+            const isClickable = !!getNotificationUrl(n, user?.role);
+
             return (
               <div
                 key={n.id}
-                className={`flex items-start gap-3 p-4 transition-colors hover:bg-gray-50
-                  ${!n.isRead ? 'bg-primary-50 border-l-4 border-l-primary-400' : ''}`}
+                className={`flex items-start gap-3 p-4 transition-colors
+                  ${!n.isRead ? 'bg-primary-50 border-l-4 border-l-primary-400' : ''}
+                  ${isClickable ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+                onClick={isClickable ? () => handleNotificationClick(n) : undefined}
+                role={isClickable ? 'button' : undefined}
+                tabIndex={isClickable ? 0 : undefined}
+                onKeyDown={isClickable ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleNotificationClick(n);
+                  }
+                } : undefined}
+                aria-label={isClickable ? `${n.title} — click to view` : undefined}
               >
-                {/* Icon */}
-                <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${cfg.bg}`}>
+                {/* Type icon */}
+                <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${cfg.bg}`} aria-hidden="true">
                   <Icon size={16} className={cfg.text} />
                 </div>
 
                 {/* Content */}
-                <div
-                  className="flex-1 min-w-0 cursor-pointer"
-                  onClick={() => !n.isRead && markReadMutation.mutate(n.id)}
-                >
+                <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <p className={`text-sm leading-snug ${!n.isRead ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'}`}>
                       {n.title}
@@ -122,23 +229,32 @@ const NotificationsPage = () => {
                         {cfg.label}
                       </span>
                       {!n.isRead && (
-                        <span className="w-2 h-2 bg-primary-500 rounded-full inline-block" />
+                        <span className="w-2 h-2 bg-primary-500 rounded-full inline-block" aria-label="Unread" />
                       )}
                     </div>
                   </div>
                   <p className="text-sm text-gray-600 mt-0.5">{n.message}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-                  </p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <p className="text-xs text-gray-400">
+                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                    </p>
+                    {isClickable && (
+                      <span className="text-xs text-primary-600 font-medium">View →</span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-1 shrink-0">
+                {/* Actions — stop propagation so click on buttons doesn't trigger row click */}
+                <div
+                  className="flex items-center gap-1 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {!n.isRead && (
                     <button
                       onClick={() => markReadMutation.mutate(n.id)}
                       className="p-1 text-gray-300 hover:text-primary-500 rounded"
                       title="Mark as read"
+                      aria-label="Mark as read"
                     >
                       <CheckCheck size={14} />
                     </button>
@@ -146,7 +262,8 @@ const NotificationsPage = () => {
                   <button
                     onClick={() => deleteMutation.mutate(n.id)}
                     className="p-1 text-gray-300 hover:text-red-500 rounded"
-                    title="Delete"
+                    title="Delete notification"
+                    aria-label="Delete notification"
                   >
                     <Trash2 size={14} />
                   </button>
