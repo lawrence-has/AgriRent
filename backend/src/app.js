@@ -40,16 +40,28 @@ const allowedOrigins = [
   'http://localhost:4173', // Vite preview
 ];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origin ${origin} not allowed`));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+app.use(cors((req, callback) => {
+  const origin = req.get('origin');
+  let isSameOrigin = false;
+
+  // Railway serves the frontend and API from one public origin. Browser module
+  // and stylesheet requests include an Origin header, so recognize that host
+  // as same-origin instead of rejecting the built frontend assets as CORS.
+  if (origin) {
+    try {
+      isSameOrigin = new URL(origin).host === req.get('host');
+    } catch {
+      isSameOrigin = false;
+    }
+  }
+
+  const isAllowedOrigin = !origin || isSameOrigin || allowedOrigins.includes(origin);
+  callback(null, {
+    origin: isAllowedOrigin ? origin || false : false,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 }));
 
 // ── Global API rate limit ────────────────────────────────────────
