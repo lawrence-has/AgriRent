@@ -122,13 +122,14 @@ const NotificationsPage = () => {
   if (isLoading) return <div className="py-20"><Spinner size="lg" /></div>;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
+          <p className="agri-eyebrow !text-[#718365]">Your activity</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-[#26382a]">Notifications</h1>
           {unreadCount > 0 && (
-            <p className="text-sm text-gray-500 mt-0.5">{unreadCount} unread</p>
+            <p className="text-sm text-[#7a8074] mt-1">{unreadCount} unread update{unreadCount === 1 ? '' : 's'} waiting for you</p>
           )}
         </div>
         {unreadCount > 0 && (
@@ -145,10 +146,10 @@ const NotificationsPage = () => {
 
       {/* Push notification quick toggle */}
       {isSupported && (
-        <div className={`rounded-xl border px-4 py-3 flex items-center justify-between gap-3
-          ${isSubscribed ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}
+        <div className={`rounded-2xl border px-4 py-4 sm:px-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm
+          ${isSubscribed ? 'bg-[#f0f4e9] border-[#d9e3ce]' : 'bg-[#fffefa] border-[#e7e5da]'}`}
         >
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-start sm:items-center gap-2 min-w-0">
             {isSubscribed
               ? <Bell size={16} className="text-green-700 shrink-0" aria-hidden="true" />
               : <BellOff size={16} className="text-gray-500 shrink-0" aria-hidden="true" />
@@ -156,6 +157,11 @@ const NotificationsPage = () => {
             <div className="min-w-0">
               <p className="text-sm font-medium text-gray-800 truncate">
                 {isSubscribed ? 'Push notifications on' : 'Push notifications off'}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {isSubscribed
+                  ? 'This device will receive reservation, rental, and chat alerts.'
+                  : 'Enable this device to receive reservation, rental, and chat alerts.'}
               </p>
               {permissionState === 'denied' && (
                 <p className="text-xs text-red-600 mt-0.5 flex items-center gap-1">
@@ -174,7 +180,7 @@ const NotificationsPage = () => {
               onClick={isSubscribed ? unsubscribe : subscribe}
               loading={pushLoading}
               disabled={pushLoading}
-              className="shrink-0"
+              className="w-full shrink-0 sm:w-auto"
             >
               {isSubscribed ? 'Disable' : 'Enable'}
             </Button>

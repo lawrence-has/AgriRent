@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
@@ -93,6 +94,17 @@ app.use('/api/archive', archiveRoutes);
 app.get('/api/health', (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
+
+// Serve the production Vite build from the API origin on Railway. During local
+// development, frontend/dist is absent and Vite continues to serve the UI.
+const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+if (fs.existsSync(path.join(frontendDist, 'index.html'))) {
+  app.use(express.static(frontendDist, { index: false }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // ── 404 ──────────────────────────────────────────────────────────
 app.use((req, res) =>

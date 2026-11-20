@@ -63,10 +63,10 @@ const MyReservations = () => {
         <div className="space-y-3">
           {data.reservations.map((r) => (
             <div key={r.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-gray-900">{r.equipment?.name}</h3>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <h3 className="min-w-0 truncate font-semibold text-gray-900">{r.equipment?.name}</h3>
                     <Badge label={r.status} />
                   </div>
                   <p className="text-sm text-gray-500">
@@ -74,7 +74,7 @@ const MyReservations = () => {
                   </p>
                   <p className="text-sm font-medium text-primary-600 mt-1">₱{parseFloat(r.totalCost).toLocaleString()}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
                   <Button variant="secondary" size="sm" as={Link} to={`/farmer/reservations/${r.id}`}>View</Button>
                   {['pending', 'confirmed'].includes(r.status) && (
                     <Button variant="danger" size="sm" onClick={() => setCancelId(r.id)}>Cancel</Button>

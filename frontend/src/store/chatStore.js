@@ -5,6 +5,7 @@ const useChatStore = create((set, get) => ({
   activeConversation: null,
   messages: [],
   onlineUserIds: [],
+  reset: () => set({ conversations: [], activeConversation: null, messages: [], onlineUserIds: [] }),
 
   setConversations: (conversations) => set({ conversations }),
 
@@ -96,6 +97,9 @@ const useChatStore = create((set, get) => ({
     set((state) => ({
       onlineUserIds: state.onlineUserIds.filter((id) => id !== Number(userId)),
     })),
+
+  setOnlineUsers: (userIds) =>
+    set({ onlineUserIds: [...new Set(userIds.map(Number))] }),
 }));
 
 export default useChatStore;

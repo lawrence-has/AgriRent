@@ -1,12 +1,12 @@
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Wheat } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { register as registerApi } from '../../api/auth';
 import useAuthStore from '../../store/authStore';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
+import AuthBrandPanel from '../../components/auth/AuthBrandPanel';
 
 const Register = () => {
   const { register, handleSubmit, formState: { errors } } = useForm();
@@ -24,16 +24,16 @@ const Register = () => {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-green-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-3">
-            <div className="bg-primary-100 p-4 rounded-full">
-              <Wheat size={36} className="text-primary-600" />
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 mt-2">Create Account</h1>
-          <p className="text-gray-500 text-sm mt-1">Join AgriRent today</p>
+    <div className="relative min-h-screen overflow-hidden bg-[#f1f0e8] flex items-center justify-center p-4 sm:p-8 lg:p-10">
+      <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-[#8fa875]/20 blur-3xl" />
+      <div className="absolute -bottom-40 -right-28 h-[28rem] w-[28rem] rounded-full bg-[#d8bd75]/20 blur-3xl" />
+      <div className="relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[30px] border border-[#e6e1d2] bg-[#fffefa] shadow-[0_30px_90px_rgba(31,50,34,0.18)] lg:grid-cols-[1fr,0.95fr]">
+        <AuthBrandPanel />
+        <div className="flex flex-col justify-center p-6 sm:p-10 lg:p-12">
+        <div className="mb-7">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-primary-700">Join the community</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-[#29392b] mt-2">Create your account</h1>
+          <p className="text-[#7c8174] text-sm mt-2">Bring your farm or equipment business to AgriRent.</p>
         </div>
 
         <form onSubmit={handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
@@ -82,10 +82,11 @@ const Register = () => {
           </Button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
+        <p className="text-center text-sm text-[#777d70] mt-7">
           Already have an account?{' '}
           <Link to="/login" className="text-primary-600 font-medium hover:underline">Sign in</Link>
         </p>
+        </div>
       </div>
     </div>
   );

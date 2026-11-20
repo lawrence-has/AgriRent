@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const { User, ChatMessage } = require('../models');
+const { createNotification } = require('../services/notificationService');
 
 const onlineUsers = new Map(); // userId -> Set of socketIds
 
@@ -51,7 +52,8 @@ const initSocket = (io) => {
     onlineUsers.get(userId).add(socket.id);
 
     socket.join(`user_${userId}`);
-    io.emit('user_online', { userId });
+    socket.emit('online_users', { userIds: Array.from(onlineUsers.keys()) });
+    socket.broadcast.emit('user_online', { userId });
 
     console.log(`[Socket] ${socket.user.name} (${userId}) connected — ${socket.id}`);
 
@@ -165,6 +167,15 @@ const initSocket = (io) => {
           preview: message.trim().substring(0, 60),
           messageId: chatMessage.id,
         });
+
+        createNotification(
+          targetId,
+          'New Message',
+          `${socket.user.name} sent you a message`,
+          'chat',
+          { senderId: userId },
+          io
+        );
 
       } catch (err) {
         console.error('[Socket] send_message error:', err);

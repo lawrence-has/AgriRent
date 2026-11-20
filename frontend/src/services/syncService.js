@@ -14,6 +14,7 @@
  */
 import api from '../api/axios';
 import useOfflineQueueStore from '../store/offlineQueueStore';
+import useAuthStore from '../store/authStore';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
@@ -26,6 +27,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  */
 const submitReservation = async (item) => {
   const store = useOfflineQueueStore.getState();
+  const userId = useAuthStore.getState().user?.id;
+
+  if (!userId || Number(item.userId) !== Number(userId)) {
+    return { status: 'skipped' };
+  }
 
   store.updateStatus(item.id, 'syncing');
 
@@ -77,11 +83,18 @@ const submitReservation = async (item) => {
  */
 export const syncOfflineQueue = async () => {
   const store = useOfflineQueueStore.getState();
+  const userId = useAuthStore.getState().user?.id;
+
+  if (!userId) {
+    return { processed: 0, submitted: 0, failed: 0, conflicts: 0 };
+  }
 
   // Expire old items first
   store.expireOldItems();
 
-  const queuedItems = store.queue.filter((item) => item.status === 'queued');
+  const queuedItems = store.queue.filter(
+    (item) => item.status === 'queued' && Number(item.userId) === Number(userId)
+  );
   if (queuedItems.length === 0) return { processed: 0, submitted: 0, failed: 0 };
 
   const results = { processed: 0, submitted: 0, failed: 0, conflicts: 0 };
@@ -91,6 +104,7 @@ export const syncOfflineQueue = async () => {
     if (!navigator.onLine) break;
 
     const result = await submitReservation(item);
+    if (result.status === 'skipped') break;
     results.processed++;
 
     if (result.status === 'submitted') results.submitted++;

@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import ErrorBoundary from './components/common/ErrorBoundary';
@@ -8,6 +8,7 @@ import NetworkStatus from './components/common/NetworkStatus';
 import useSocket from './hooks/useSocket';
 import useAuthStore from './store/authStore';
 import useNotificationStore from './store/notificationStore';
+import usePushNotification from './hooks/usePushNotification';
 import { getNotifications } from './api/notifications';
 import { destroySocket } from './socket';
 
@@ -26,7 +27,6 @@ import EquipmentDetailPage from './pages/farmer/EquipmentDetailPage';
 import MyReservations from './pages/farmer/MyReservations';
 import ReservationDetailPage from './pages/farmer/ReservationDetailPage';
 import MyRentals from './pages/farmer/MyRentals';
-import OfflineQueue from './pages/farmer/OfflineQueue';
 
 // Owner
 import OwnerDashboard from './pages/owner/OwnerDashboard';
@@ -47,10 +47,14 @@ import ChatPage from './pages/chat/ChatPage';
 
 // Other
 import NotFound from './pages/NotFound';
+import StartupScreen from './components/common/StartupScreen';
 
 // Initialize socket, load notification count, and handle session expiry
 const AppInit = () => {
   useSocket();
+  // Reattach an existing browser subscription to the signed-in account on login/reload.
+  // New permission is still requested only from the user's explicit Enable action.
+  usePushNotification();
   const { token, logout } = useAuthStore();
   const { setNotifications } = useNotificationStore();
 
@@ -77,12 +81,28 @@ const AppInit = () => {
 };
 
 function App() {
+  const [startupState, setStartupState] = useState('visible');
+
+  useEffect(() => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setStartupState('hidden');
+      return undefined;
+    }
+    const exitTimer = window.setTimeout(() => setStartupState('exiting'), 1700);
+    const removeTimer = window.setTimeout(() => setStartupState('hidden'), 2000);
+    return () => {
+      window.clearTimeout(exitTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, []);
+
   return (
     <BrowserRouter>
       <ErrorBoundary>
         <NetworkStatus />
         <AppInit />
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+        {startupState !== 'hidden' && <div className={startupState === 'exiting' ? 'startup-exit' : ''}><StartupScreen /></div>}
         <Routes>
           {/* Public */}
           <Route path="/login" element={<Login />} />
@@ -112,7 +132,6 @@ function App() {
                   <Route path="reservations" element={<MyReservations />} />
                   <Route path="reservations/:id" element={<ReservationDetailPage />} />
                   <Route path="rentals" element={<MyRentals />} />
-                  <Route path="offline-queue" element={<OfflineQueue />} />
                   <Route path="*" element={<Navigate to="dashboard" />} />
                 </Routes>
               </Layout>

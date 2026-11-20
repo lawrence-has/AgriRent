@@ -6,6 +6,12 @@ import useChatStore from '../../store/chatStore';
 import useAuthStore from '../../store/authStore';
 import MessageBubble from './MessageBubble';
 import Spinner from '../common/Spinner';
+import {
+  getCachedMessages,
+  queueChatMessage,
+  saveCachedConversations,
+  saveCachedMessages,
+} from '../../services/chatOfflineStore';
 
 const SENDING_COOLDOWN_MS = 300; // prevent double-send
 
@@ -23,6 +29,7 @@ const ChatWindow = ({ partner, onBack }) => {
   const [connected, setConnected] = useState(!!getSocket()?.connected);
   const [typingVisible, setTypingVisible] = useState(false);
   const [msgs, setMsgs] = useState([]);
+  const [msgsPartnerId, setMsgsPartnerId] = useState(null);
   const [page, setPage] = useState(1);
   const [totalMessages, setTotalMessages] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -38,21 +45,47 @@ const ChatWindow = ({ partner, onBack }) => {
 
   // ── Load history (page 1) ──────────────────────────────────────
   const loadMessages = useCallback(() => {
-    setLoading(true);
+    const cachedMessages = getCachedMessages(myId, pid);
+    setMsgsPartnerId(pid);
+    setMsgs(cachedMessages);
+    setTotalMessages(cachedMessages.length);
+    setLoading(navigator.onLine ? cachedMessages.length === 0 : false);
     setLoadError(null);
-    setMsgs([]);
     setPage(1);
-    setText('');
+    if (!navigator.onLine) {
+      if (!cachedMessages.length) {
+        setLoadError('No saved messages for this conversation yet.');
+      }
+      return;
+    }
+
     getMessages(pid, { limit: 50 })
       .then((r) => {
-        setMsgs(r.data.messages || []);
-        setTotalMessages(r.data.total || 0);
+        const pending = getCachedMessages(myId, pid).filter(
+          (message) => String(message.id).startsWith('queued_')
+        );
+        const combined = [...(r.data.messages || []), ...pending];
+        setMsgs(combined);
+        setTotalMessages((r.data.total || 0) + pending.length);
+        saveCachedMessages(myId, pid, combined);
       })
-      .catch((err) => setLoadError(err.message || 'Failed to load messages'))
+      .catch((err) => {
+        if (!cachedMessages.length) setLoadError(err.message || 'Failed to load messages');
+      })
       .finally(() => setLoading(false));
-  }, [pid]);
+  }, [pid, myId]);
 
   useEffect(() => { loadMessages(); }, [loadMessages]);
+
+  useEffect(() => {
+    const handleOutboxSynced = () => loadMessages();
+    window.addEventListener('chat:outbox-synced', handleOutboxSynced);
+    return () => window.removeEventListener('chat:outbox-synced', handleOutboxSynced);
+  }, [loadMessages]);
+
+  useEffect(() => {
+    if (msgsPartnerId === pid) saveCachedMessages(myId, pid, msgs);
+  }, [myId, pid, msgs, msgsPartnerId]);
 
   // ── Load older messages (pagination) ──────────────────────────
   const loadMore = async () => {
@@ -138,6 +171,7 @@ const ChatWindow = ({ partner, onBack }) => {
           clearUnread(pid);
         }
         updateConversationOnMessage(msg, myId);
+        saveCachedConversations(myId, useChatStore.getState().conversations);
       };
 
       handleMessageSent = (msg) => {
@@ -159,6 +193,7 @@ const ChatWindow = ({ partner, onBack }) => {
           return [...prev, msg];
         });
         updateConversationOnMessage(msg, myId);
+        saveCachedConversations(myId, useChatStore.getState().conversations);
       };
 
       // Update isRead on existing messages when partner reads them
@@ -246,6 +281,18 @@ const ChatWindow = ({ partner, onBack }) => {
     lastSentAt.current = now;
 
     setText('');
+    if (!navigator.onLine) {
+      const queued = queueChatMessage(myId, partner, t, {
+        id: myId,
+        name: user.name,
+        profilePicture: user.profilePicture,
+      });
+      setMsgs((prev) => [...prev, queued]);
+      updateConversationOnMessage(queued, myId);
+      saveCachedConversations(myId, useChatStore.getState().conversations);
+      return;
+    }
+
     const socket = getSocket();
 
     if (socket?.connected) {
@@ -273,14 +320,25 @@ const ChatWindow = ({ partner, onBack }) => {
             { ...data.message, sender: { id: myId, name: user.name } },
           ]);
           updateConversationOnMessage(data.message, myId);
+          saveCachedConversations(myId, useChatStore.getState().conversations);
         })
-        .catch(() => {
-          // Restore text so user can retry
+        .catch((error) => {
+          if (!error.response) {
+            const queued = queueChatMessage(myId, partner, t, {
+              id: myId,
+              name: user.name,
+              profilePicture: user.profilePicture,
+            });
+            setMsgs((prev) => [...prev, queued]);
+            updateConversationOnMessage(queued, myId);
+            saveCachedConversations(myId, useChatStore.getState().conversations);
+            return;
+          }
           setText(t);
         })
         .finally(() => setSending(false));
     }
-  }, [text, sending, pid, myId, user]);
+  }, [text, sending, pid, myId, user, partner, updateConversationOnMessage]);
 
   const onKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -331,12 +389,12 @@ const ChatWindow = ({ partner, onBack }) => {
         </div>
 
         <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium shrink-0
-          ${connected ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}
+          ${connected ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'}`}
           aria-live="polite"
         >
           {connected
             ? <><Wifi size={11} aria-hidden="true" /> Live</>
-            : <><WifiOff size={11} aria-hidden="true" /> Reconnecting...</>
+            : <><WifiOff size={11} aria-hidden="true" /> {navigator.onLine ? 'Reconnecting...' : 'Offline'}</>
           }
         </div>
       </div>

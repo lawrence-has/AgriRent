@@ -5,8 +5,8 @@ const Input = forwardRef(({ label, error, className = '', ...props }, ref) => (
     {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
     <input
       ref={ref}
-      className={`border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
-        ${error ? 'border-red-400 bg-red-50' : 'border-gray-300'}
+      className={`w-full min-w-0 border rounded-xl px-3.5 py-2.5 text-sm min-h-10 bg-white focus:outline-none focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500
+        ${error ? 'border-red-400 bg-red-50 focus:ring-red-500/10 focus:border-red-500' : 'border-gray-200 shadow-sm'}
         ${className}`}
       {...props}
     />

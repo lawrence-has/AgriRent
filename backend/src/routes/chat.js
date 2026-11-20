@@ -4,6 +4,7 @@ const { body, param } = require('express-validator');
 const { ChatMessage, User, sequelize } = require('../models');
 const { requireAuth } = require('../middleware/auth');
 const { handleValidation, validatePagination } = require('../middleware/validate');
+const { createNotification } = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -172,12 +173,13 @@ router.post(
     body('receiverId').isInt({ min: 1 }).withMessage('receiverId must be a positive integer'),
     body('message').trim().notEmpty().withMessage('Message cannot be empty')
       .isLength({ max: 2000 }).withMessage('Message must be 2000 characters or less'),
+    body('clientMessageId').optional().isString().isLength({ min: 1, max: 80 }),
     body('reservationId').optional().isInt({ min: 1 }).withMessage('reservationId must be a positive integer'),
   ],
   handleValidation,
   async (req, res, next) => {
     try {
-      const { receiverId, message, reservationId } = req.body;
+      const { receiverId, message, reservationId, clientMessageId } = req.body;
 
       if (parseInt(receiverId) === req.user.id) {
         return res.status(400).json({ success: false, message: 'You cannot send a message to yourself' });
@@ -186,14 +188,31 @@ router.post(
       const receiver = await User.findByPk(receiverId, { attributes: ['id'] });
       if (!receiver) return res.status(404).json({ success: false, message: 'Recipient not found' });
 
+      if (clientMessageId) {
+        const existing = await ChatMessage.findOne({
+          where: { senderId: req.user.id, clientMessageId },
+        });
+        if (existing) return res.json({ success: true, message: existing });
+      }
+
       const chatMessage = await ChatMessage.create({
         senderId: req.user.id,
         receiverId,
         message: message.trim(),
         reservationId: reservationId || null,
+        clientMessageId: clientMessageId || null,
       });
 
       const io = req.app.get('io');
+      createNotification(
+        receiverId,
+        'New Message',
+        `${req.user.name} sent you a message`,
+        'chat',
+        { senderId: req.user.id },
+        io
+      );
+
       if (io) {
         const roomId = [req.user.id, receiverId].sort().join('_');
         io.to(`chat_${roomId}`).emit('new_message', {
@@ -203,6 +222,12 @@ router.post(
             name: req.user.name,
             profilePicture: req.user.profilePicture,
           },
+        });
+        io.to(`user_${receiverId}`).emit('message_notification', {
+          senderId: req.user.id,
+          senderName: req.user.name,
+          preview: message.trim().substring(0, 60),
+          messageId: chatMessage.id,
         });
       }
 

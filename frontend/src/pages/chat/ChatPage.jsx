@@ -9,6 +9,11 @@ import ConversationList from '../../components/chat/ConversationList';
 import ChatWindow from '../../components/chat/ChatWindow';
 import EmptyState from '../../components/common/EmptyState';
 import Spinner from '../../components/common/Spinner';
+import {
+  getCachedConversations,
+  saveCachedConversations,
+  syncChatOutbox,
+} from '../../services/chatOfflineStore';
 
 const ChatPage = () => {
   const {
@@ -25,17 +30,53 @@ const ChatPage = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
 
+  useEffect(() => {
+    setActiveConversation(null);
+    setConversations(getCachedConversations(user.id));
+  }, [setActiveConversation, setConversations, user.id]);
+
   // ── Load conversations from HTTP ───────────────────────────────
   const { isLoading } = useQuery({
-    queryKey: ['conversations'],
-    queryFn: () =>
-      getConversations().then((r) => {
-        setConversations(r.data.conversations);
-        return r.data.conversations;
-      }),
+    queryKey: ['conversations', user.id],
+    queryFn: async () => {
+      try {
+        if (navigator.onLine) await syncChatOutbox(user.id);
+        const { data } = await getConversations();
+        setConversations(data.conversations);
+        saveCachedConversations(user.id, data.conversations);
+        return data.conversations;
+      } catch (error) {
+        if (!navigator.onLine) {
+          const cached = getCachedConversations(user.id);
+          setConversations(cached);
+          return cached;
+        }
+        throw error;
+      }
+    },
+    initialData: () => getCachedConversations(user.id),
+    initialDataUpdatedAt: 0,
     staleTime: 1000 * 30,
     refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    const syncQueuedMessages = async () => {
+      if (!navigator.onLine) return;
+      try {
+        const result = await syncChatOutbox(user.id);
+        if (result.sent) {
+          window.dispatchEvent(new Event('chat:outbox-synced'));
+          queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        }
+      } catch (error) {
+        console.error('[Chat offline] Failed to sync queued messages:', error);
+      }
+    };
+
+    window.addEventListener('online', syncQueuedMessages);
+    return () => window.removeEventListener('online', syncQueuedMessages);
+  }, [queryClient, user.id]);
 
   // ── Search users ───────────────────────────────────────────────
   useEffect(() => {
@@ -62,6 +103,7 @@ const ChatPage = () => {
   const handleStartChat = (u) => {
     const partner = { id: u.id, name: u.name, role: u.role, profilePicture: u.profilePicture };
     addConversation({ partner, lastMessage: null, unreadCount: 0 });
+    saveCachedConversations(user.id, useChatStore.getState().conversations);
     setActiveConversation(partner);
     setShowNewChat(false);
     setUserSearch('');
@@ -73,7 +115,7 @@ const ChatPage = () => {
   if (isLoading) return <div className="py-20"><Spinner size="lg" /></div>;
 
   return (
-    <div className="h-[calc(100vh-80px)] flex rounded-xl overflow-hidden shadow-sm border border-gray-100 bg-white">
+    <div className="flex h-[calc(100dvh-8rem)] min-h-[24rem] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm sm:h-[calc(100dvh-9rem)] sm:min-h-[32rem]">
 
       {/* ── Sidebar ───────────────────────────────────────────── */}
       <div className={`border-r border-gray-100 flex-shrink-0 flex flex-col
@@ -84,6 +126,7 @@ const ChatPage = () => {
           <h2 className="font-semibold text-gray-800">Messages</h2>
           <button
             onClick={() => setShowNewChat(!showNewChat)}
+            disabled={!navigator.onLine}
             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-primary-600 transition-colors"
             title="New conversation"
           >
@@ -95,12 +138,16 @@ const ChatPage = () => {
         {showNewChat && (
           <div className="border-b border-gray-100 p-3 bg-gray-50">
             <p className="text-xs text-gray-500 mb-2 font-medium">Start a new conversation</p>
+            {!navigator.onLine && (
+              <p className="text-xs text-orange-700 mb-2">Connect to the internet to find people.</p>
+            )}
             <div className="relative">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 autoFocus
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
+                disabled={!navigator.onLine}
                 placeholder="Search by name..."
                 className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
@@ -134,7 +181,9 @@ const ChatPage = () => {
           <EmptyState
             icon={MessageSquare}
             title="No conversations yet"
-            description="Click + above to start a conversation"
+            description={navigator.onLine
+              ? 'Click + above to start a conversation'
+              : 'Connect to the internet to start a conversation. Your saved chats will appear here.'}
           />
         ) : (
           <ConversationList

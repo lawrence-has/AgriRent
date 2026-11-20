@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getEquipmentAvailability } from '../../api/equipment';
-import { format, eachDayOfInterval, parseISO, isWithinInterval } from 'date-fns';
+import { format, eachDayOfInterval, parseISO, isWithinInterval, startOfMonth, endOfMonth, addMonths, subMonths, isBefore } from 'date-fns';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Spinner from '../common/Spinner';
 
 const AvailabilityCalendar = ({ equipmentId }) => {
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const { data, isLoading, isError } = useQuery({
     queryKey: ['availability', equipmentId],
     queryFn: () => getEquipmentAvailability(equipmentId).then((r) => r.data.bookedDates),
@@ -46,48 +49,68 @@ const AvailabilityCalendar = ({ equipmentId }) => {
       );
 
   const today = new Date();
+  const monthStart = startOfMonth(visibleMonth);
   const monthDays = eachDayOfInterval({
-    start: new Date(today.getFullYear(), today.getMonth(), 1),
-    end: new Date(today.getFullYear(), today.getMonth() + 1, 0),
+    start: monthStart,
+    end: endOfMonth(visibleMonth),
   });
 
   const getDayClass = (day) => {
-    if (day < today) return 'text-gray-300 cursor-default';
-    if (isHardBlocked(day)) return 'bg-red-100 text-red-700';
-    if (isSoftBlocked(day)) return 'bg-yellow-100 text-yellow-700'; // pending — might open up
-    return 'bg-green-100 text-green-700';
+    if (isBefore(day, new Date(today.getFullYear(), today.getMonth(), today.getDate()))) return 'text-[#c5c8bd]';
+    if (isHardBlocked(day)) return 'bg-[#f8e9e5] text-[#984d3b] hover:bg-[#f1d7d0]';
+    if (isSoftBlocked(day)) return 'bg-[#fbf1dc] text-[#8a641e] hover:bg-[#f3e4bf]';
+    return 'bg-[#e9f1e4] text-[#45683b] hover:bg-[#d8e7cf]';
+  };
+
+  const getDayLabel = (day) => {
+    if (isHardBlocked(day)) return 'Booked';
+    if (isSoftBlocked(day)) return 'Pending request';
+    return 'Available';
   };
 
   return (
-    <div>
-      <h4 className="text-sm font-medium text-gray-700 mb-2">
-        Availability — {format(today, 'MMMM yyyy')}
-      </h4>
-      <div className="grid grid-cols-7 gap-1 text-xs text-center">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#87907e]">Availability calendar</p>
+          <h4 className="mt-0.5 text-base font-bold text-[#2b3d2d]">{format(visibleMonth, 'MMMM yyyy')}</h4>
+        </div>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => setVisibleMonth((month) => subMonths(month, 1))} aria-label="Previous month" className="rounded-xl border border-[#e7e5da] bg-white p-2 text-[#687361] transition hover:bg-[#f0f3e9] hover:text-[#294331] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
+            <ChevronLeft size={16} />
+          </button>
+          <button type="button" onClick={() => setVisibleMonth((month) => addMonths(month, 1))} aria-label="Next month" className="rounded-xl border border-[#e7e5da] bg-white p-2 text-[#687361] transition hover:bg-[#f0f3e9] hover:text-[#294331] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5 text-center" aria-label={`Equipment availability for ${format(visibleMonth, 'MMMM yyyy')}`}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <div key={d} className="font-medium text-gray-500 py-1">{d}</div>
+          <div key={d} className="py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#969a8e]">{d}</div>
         ))}
-        {Array.from({ length: monthDays[0].getDay() }).map((_, i) => (
+        {Array.from({ length: monthStart.getDay() }).map((_, i) => (
           <div key={`empty-${i}`} />
         ))}
         {monthDays.map((day) => (
           <div
             key={day.toISOString()}
-            className={`py-1 rounded text-xs font-medium ${getDayClass(day)}`}
+            title={`${format(day, 'MMMM d')}: ${getDayLabel(day)}`}
+            aria-label={`${format(day, 'MMMM d')}: ${getDayLabel(day)}`}
+            className={`grid aspect-square place-items-center rounded-xl text-xs font-semibold transition-colors ${getDayClass(day)}`}
           >
             {format(day, 'd')}
           </div>
         ))}
       </div>
-      <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 bg-green-100 rounded inline-block" /> Available
+      <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-[#eeede5] pt-3 text-[11px] font-medium text-[#737a6d]">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#86a875]" /> Available
         </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 bg-yellow-100 rounded inline-block" /> Pending
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#d7ab51]" /> Pending
         </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 bg-red-100 rounded inline-block" /> Booked
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[#c87d68]" /> Booked
         </span>
       </div>
     </div>

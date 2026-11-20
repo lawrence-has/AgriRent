@@ -41,12 +41,13 @@ const useOfflineQueueStore = create((set, get) => ({
    * Generates a unique idempotency key to prevent duplicates.
    * Returns the idempotency key for reference.
    */
-  enqueue: (reservationData) => {
+  enqueue: (reservationData, userId) => {
     const existing = get().queue;
 
     // Dedup: prevent same equipment+dates being queued twice
     const isDuplicate = existing.some(
       (item) =>
+        Number(item.userId) === Number(userId) &&
         item.data.equipmentId === reservationData.equipmentId &&
         item.data.startDate === reservationData.startDate &&
         item.data.endDate === reservationData.endDate &&
@@ -55,9 +56,11 @@ const useOfflineQueueStore = create((set, get) => ({
 
     if (isDuplicate) return null;
 
-    const idempotencyKey = `offline_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const idempotencyKey = reservationData.idempotencyKey ||
+      `offline_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const item = {
       id: idempotencyKey,
+      userId: Number(userId),
       data: { ...reservationData, idempotencyKey },
       status: 'queued',  // queued | syncing | submitted | failed | conflict | expired
       createdAt: new Date().toISOString(),
@@ -105,9 +108,18 @@ const useOfflineQueueStore = create((set, get) => ({
   /**
    * Clear all items with terminal status (submitted/expired).
    */
-  clearCompleted: () => {
+  clearCompleted: (userId) => {
     const updated = get().queue.filter(
-      (item) => !['submitted', 'expired'].includes(item.status)
+      (item) => Number(item.userId) !== Number(userId) ||
+        !['submitted', 'expired'].includes(item.status)
+    );
+    saveToStorage(updated);
+    set({ queue: updated });
+  },
+
+  clearUnassigned: () => {
+    const updated = get().queue.filter(
+      (item) => Number.isInteger(Number(item.userId)) && Number(item.userId) > 0
     );
     saveToStorage(updated);
     set({ queue: updated });
@@ -133,8 +145,8 @@ const useOfflineQueueStore = create((set, get) => ({
   /**
    * Get counts by status for UI display.
    */
-  getCounts: () => {
-    const q = get().queue;
+  getCounts: (userId) => {
+    const q = get().queue.filter((item) => Number(item.userId) === Number(userId));
     return {
       queued:    q.filter((i) => i.status === 'queued').length,
       syncing:   q.filter((i) => i.status === 'syncing').length,

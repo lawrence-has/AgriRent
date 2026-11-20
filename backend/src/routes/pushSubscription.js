@@ -1,10 +1,89 @@
 const express = require('express');
+const webpush = require('web-push');
+const { Op } = require('sequelize');
 const { body } = require('express-validator');
 const { PushSubscription } = require('../models');
 const { requireAuth } = require('../middleware/auth');
 const { handleValidation } = require('../middleware/validate');
 
 const router = express.Router();
+const pendingSubscriptions = new Map();
+
+const pushPayload = (title, message, data = {}) =>
+  JSON.stringify({ title, message, data });
+
+router.post('/test', requireAuth, async (req, res, next) => {
+  try {
+    const where = { userId: req.user.id };
+    // A targeted repair test proves this specific browser endpoint works,
+    // instead of succeeding because another device on the account worked.
+    if (req.body?.endpoint) where.endpoint = req.body.endpoint;
+    const subscriptions = await PushSubscription.findAll({
+      where,
+    });
+
+    if (!subscriptions.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'No push subscription is registered for this device',
+      });
+    }
+
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: 'Push notifications are not configured on the server',
+      });
+    }
+
+    webpush.setVapidDetails(
+      process.env.VAPID_EMAIL || 'mailto:admin@agrirent.com',
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+
+    const payload = pushPayload(
+      'AgriRent push test',
+      'Push notifications are working!',
+      { type: 'system' }
+    );
+    let sent = 0;
+    const failures = [];
+
+    for (const subscription of subscriptions) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: subscription.endpoint, keys: subscription.keys },
+          payload,
+          { TTL: 60 * 60 * 24, urgency: 'high' }
+        );
+        sent += 1;
+      } catch (error) {
+        if (error.statusCode === 410 || error.statusCode === 404) {
+          await subscription.destroy();
+        }
+        failures.push(error.statusCode || error.message);
+      }
+    }
+
+    if (!sent) {
+      return res.status(502).json({
+        success: false,
+        message: 'Push delivery failed',
+        failures,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Test notification sent to ${sent} device${sent === 1 ? '' : 's'}`,
+      sent,
+      failures,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ── POST /api/push/subscribe ─────────────────────────────────────
 // Register or update a push subscription for the authenticated user.
@@ -28,16 +107,33 @@ router.post(
   async (req, res, next) => {
     try {
       const { endpoint, keys } = req.body;
-
-      // Upsert: update keys if same endpoint already exists for this user
-      const [sub, created] = await PushSubscription.findOrCreate({
-        where: { userId: req.user.id, endpoint },
-        defaults: { userId: req.user.id, endpoint, keys },
-      });
-
-      if (!created) {
-        await sub.update({ keys });
+      const lockKey = `${req.user.id}:${endpoint}`;
+      let operation = pendingSubscriptions.get(lockKey);
+      if (!operation) {
+        operation = (async () => {
+          const existing = await PushSubscription.findAll({
+            where: { userId: req.user.id, endpoint },
+            order: [['id', 'ASC']],
+          });
+          const sub = existing[0];
+          const created = !sub;
+          if (sub) {
+            await sub.update({ keys });
+            // Earlier concurrent registration attempts could have left duplicate
+            // rows. Keep one row per account and browser endpoint.
+            if (existing.length > 1) {
+              await PushSubscription.destroy({
+                where: { userId: req.user.id, endpoint, id: { [Op.ne]: sub.id } },
+              });
+            }
+          } else {
+            await PushSubscription.create({ userId: req.user.id, endpoint, keys });
+          }
+          return created;
+        })().finally(() => pendingSubscriptions.delete(lockKey));
+        pendingSubscriptions.set(lockKey, operation);
       }
+      const created = await operation;
 
       res.status(created ? 201 : 200).json({
         success: true,

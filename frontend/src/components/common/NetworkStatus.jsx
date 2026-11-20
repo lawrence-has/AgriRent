@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Wifi, WifiOff, X, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
 import { syncOfflineQueue } from '../../services/syncService';
 import useOfflineQueueStore from '../../store/offlineQueueStore';
+import useAuthStore from '../../store/authStore';
 
 /**
  * NetworkStatus
@@ -20,7 +21,8 @@ const NetworkStatus = () => {
   const [syncResults, setSyncResults] = useState(null);
 
   const { queue, getCounts, expireOldItems } = useOfflineQueueStore();
-  const counts = getCounts();
+  const { user } = useAuthStore();
+  const counts = getCounts(user?.id);
   const pendingCount = counts.queued + counts.syncing;
 
   // ── Trigger sync when back online ───────────────────────────────
@@ -178,8 +180,8 @@ const NetworkStatus = () => {
             </p>
             <p className="text-xs text-red-200 mt-0.5">
               {pendingCount > 0
-                ? `${pendingCount} reservation${pendingCount > 1 ? 's' : ''} queued — will submit automatically when back online.`
-                : 'Previously viewed equipment is accessible. Reservations will sync when connection is restored.'
+                ? `${pendingCount} reservation${pendingCount > 1 ? 's' : ''} queued — requests and chat messages will sync when you're back online.`
+                : 'Saved equipment and chat history are available. Reservations and queued messages will sync when you reconnect.'
               }
             </p>
           </div>

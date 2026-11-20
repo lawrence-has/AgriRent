@@ -1,18 +1,19 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
 const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="agri-shell min-h-screen">
       <Navbar onMenuClick={() => setSidebarOpen(true)} />
-      <div className="flex min-h-[calc(100vh-57px)]">
+      <div className="flex min-h-[calc(100dvh-4.5rem)]">
         <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        {/* Main content: constrain width on very wide screens, ensure it never bleeds under sidebar */}
-        <main className="flex-1 p-4 lg:p-6 min-w-0 max-w-7xl w-full">
-          {children}
+        <main className="min-w-0 w-full flex-1 p-3 sm:p-6 lg:p-8">
+          <div key={location.pathname} className="mx-auto max-w-[1480px] page-enter">{children}</div>
         </main>
       </div>
     </div>

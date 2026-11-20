@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { Bell, CheckCheck, Trash2, X } from 'lucide-react';
 import { getNotifications, markAllRead, markNotificationRead, deleteNotification } from '../../api/notifications';
 import useNotificationStore from '../../store/notificationStore';
 import { getSocket } from '../../hooks/useSocket';
+import useAuthStore from '../../store/authStore';
 import Spinner from '../common/Spinner';
 
 const typeStyles = {
@@ -16,6 +18,8 @@ const typeStyles = {
 
 const NotificationDropdown = ({ onClose }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
   const { notifications, unreadCount, setNotifications, markRead, markAllRead: markAllStore, removeNotification } = useNotificationStore();
   const dropdownRef = useRef(null);
 
@@ -76,12 +80,24 @@ const NotificationDropdown = ({ onClose }) => {
   const handleClick = (n) => {
     if (!n.isRead) markReadMutation.mutate(n.id);
     onClose();
+    if (n.type === 'chat') return navigate('/chat');
+    if (n.type === 'transaction') {
+      if (user?.role === 'farmer') return navigate('/farmer/rentals');
+      if (user?.role === 'owner') return navigate('/owner/transactions');
+      return navigate('/admin/reservations');
+    }
+    if (n.type === 'reservation') {
+      if (user?.role === 'farmer' && n.data?.reservationId) return navigate(`/farmer/reservations/${n.data.reservationId}`);
+      if (user?.role === 'farmer') return navigate('/farmer/reservations');
+      if (user?.role === 'owner') return navigate('/owner/reservations');
+      return navigate('/admin/reservations');
+    }
   };
 
   return (
     <div
       ref={dropdownRef}
-      className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden"
+      className="absolute right-0 mt-2 w-[min(24rem,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -111,7 +127,7 @@ const NotificationDropdown = ({ onClose }) => {
       </div>
 
       {/* List */}
-      <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
+      <div className="max-h-[min(24rem,calc(100dvh-7rem))] overflow-y-auto overscroll-contain divide-y divide-gray-50">
         {isLoading ? (
           <div className="py-10"><Spinner /></div>
         ) : !notifications?.length ? (
@@ -154,6 +170,7 @@ const NotificationDropdown = ({ onClose }) => {
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(n.id); }}
                   className="p-1 text-gray-300 hover:text-red-500 shrink-0 rounded"
+                  aria-label={`Delete notification: ${n.title}`}
                 >
                   <Trash2 size={13} />
                 </button>

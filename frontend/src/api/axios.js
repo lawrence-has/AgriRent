@@ -1,5 +1,13 @@
 import axios from 'axios';
 
+const configuredApiUrl = import.meta.env.VITE_API_URL;
+const normalizedApiUrl = configuredApiUrl?.replace(/\/+$/, '');
+const configuredApiHost = configuredApiUrl
+  ? new URL(configuredApiUrl, window.location.origin).hostname
+  : null;
+const useSameOriginApi = !configuredApiUrl ||
+  ['localhost', '127.0.0.1'].includes(configuredApiHost);
+
 /**
  * Central Axios instance for all AgriRent API calls.
  *
@@ -11,9 +19,7 @@ import axios from 'axios';
  */
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL
-    ? `${import.meta.env.VITE_API_URL}/api`
-    : '/api',
+  baseURL: useSameOriginApi ? '/api' : `${normalizedApiUrl}/api`,
   timeout: 30000, // 30 seconds — prevents infinite loading on slow/dead backend
   withCredentials: true,
   headers: {

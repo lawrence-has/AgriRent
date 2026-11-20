@@ -10,6 +10,7 @@ const formatTime = (dateStr) => {
 
 const MessageBubble = ({ message, isMine }) => {
   // Optimistic messages have a temp id
+  const isQueued = message.status === 'queued' || String(message.id).startsWith('queued_');
   const isOptimistic = String(message.id).startsWith('temp_');
 
   return (
@@ -38,7 +39,9 @@ const MessageBubble = ({ message, isMine }) => {
           </p>
           {isMine && (
             <span className="text-xs">
-              {isOptimistic ? (
+              {isQueued ? (
+                <span className="text-[10px] text-orange-600" title="Will send when you reconnect">Queued</span>
+              ) : isOptimistic ? (
                 <Check size={12} className="text-gray-400" />
               ) : message.isRead ? (
                 <CheckCheck size={12} className="text-primary-500" />

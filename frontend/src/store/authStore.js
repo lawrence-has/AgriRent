@@ -22,9 +22,14 @@ const useAuthStore = create((set) => ({
   },
 
   logout: () => {
-    localStorage.removeItem('agrirent_token');
-    localStorage.removeItem('agrirent_user');
-    set({ token: null, user: null });
+    try {
+      localStorage.removeItem('agrirent_token');
+      localStorage.removeItem('agrirent_user');
+    } catch {
+      // Always clear in-memory auth even if browser storage is unavailable.
+    } finally {
+      set({ token: null, user: null });
+    }
   },
 
   setUser: (user) => {

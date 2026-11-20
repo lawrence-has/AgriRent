@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Archive } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getEquipment, deleteEquipment } from '../../api/equipment';
 import Badge from '../../components/common/Badge';
@@ -18,8 +19,13 @@ const EquipmentManagement = () => {
 
   const deleteMutation = useMutation({
     mutationFn: deleteEquipment,
-    onSuccess: () => { toast.success('Equipment deleted'); queryClient.invalidateQueries(['admin-equipment']); setDeleteId(null); },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+    onSuccess: () => {
+      toast.success('Equipment archived');
+      queryClient.invalidateQueries(['admin-equipment']);
+      queryClient.invalidateQueries(['archive-summary']);
+      setDeleteId(null);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to archive equipment'),
   });
 
   if (isLoading) return <div className="py-20"><Spinner size="lg" /></div>;
@@ -27,8 +33,8 @@ const EquipmentManagement = () => {
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-gray-900">Equipment Management</h1>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+        <table className="w-full min-w-[700px] text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
               {['Name', 'Category', 'Owner', 'Daily Rate', 'Status', 'Actions'].map((h) => (
@@ -45,7 +51,9 @@ const EquipmentManagement = () => {
                 <td className="px-4 py-3 text-primary-600 font-medium">₱{parseFloat(eq.dailyRate).toLocaleString()}</td>
                 <td className="px-4 py-3"><Badge label={eq.status} /></td>
                 <td className="px-4 py-3">
-                  <Button variant="danger" size="sm" onClick={() => setDeleteId(eq.id)}>Delete</Button>
+                  <Button variant="danger" size="sm" onClick={() => setDeleteId(eq.id)}>
+                    <Archive size={13} /> Archive
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -56,9 +64,9 @@ const EquipmentManagement = () => {
         isOpen={!!deleteId}
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteMutation.mutate(deleteId)}
-        title="Delete Equipment"
-        message="This will soft-delete the equipment."
-        confirmLabel="Delete"
+        title="Archive Equipment"
+        message="This will move the equipment to Archive Management. It can be restored later."
+        confirmLabel="Archive"
         danger
         loading={deleteMutation.isPending}
       />

@@ -22,6 +22,7 @@ const Reservation = sequelize.define('Reservation', {
     defaultValue: 'pending',
   },
   notes: { type: DataTypes.TEXT, allowNull: true },
+  idempotencyKey: { type: DataTypes.STRING(100), allowNull: true },
   // cancellationReason — recorded when status transitions to 'cancelled'
   cancellationReason: { type: DataTypes.STRING(500), allowNull: true },
   deletedAt: { type: DataTypes.DATE, allowNull: true },
@@ -35,6 +36,11 @@ const Reservation = sequelize.define('Reservation', {
     { fields: ['equipmentId', 'startDate', 'endDate'], name: 'reservations_equipment_dates_idx' },
     { fields: ['farmerId', 'status'], name: 'reservations_farmer_status_idx' },
     { fields: ['deletedAt'], name: 'reservations_deleted_at_idx' },
+    {
+      unique: true,
+      fields: ['farmerId', 'idempotencyKey'],
+      name: 'reservations_farmer_idempotency_unique',
+    },
   ],
 });
 

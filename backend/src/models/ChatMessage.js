@@ -19,6 +19,7 @@ const ChatMessage = sequelize.define('ChatMessage', {
     references: { model: 'Reservations', key: 'id' },
   },
   message: { type: DataTypes.TEXT, allowNull: false },
+  clientMessageId: { type: DataTypes.STRING(80), allowNull: true },
   isRead: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   deletedAt: { type: DataTypes.DATE, allowNull: true },
 }, {
@@ -38,6 +39,11 @@ const ChatMessage = sequelize.define('ChatMessage', {
     { fields: ['createdAt'], name: 'chat_messages_created_at_idx' },
     // paranoid filter
     { fields: ['deletedAt'], name: 'chat_messages_deleted_at_idx' },
+    {
+      unique: true,
+      fields: ['senderId', 'clientMessageId'],
+      name: 'chat_messages_client_message_unique',
+    },
   ],
 });
 

@@ -69,10 +69,10 @@ const ManageTransactions = () => {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
         {resData?.reservations?.length > 0 && (
-          <Button onClick={() => setReleaseModal(true)}>Release Equipment</Button>
+          <Button onClick={() => setReleaseModal(true)} className="w-full sm:w-auto">Release Equipment</Button>
         )}
       </div>
 
@@ -83,10 +83,10 @@ const ManageTransactions = () => {
           <div className="space-y-3">
             {txData.transactions.map((t) => (
               <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold">{t.reservation?.equipment?.name}</h3>
+                      <h3 className="min-w-0 truncate font-semibold">{t.reservation?.equipment?.name}</h3>
                       <Badge label={t.status} />
                     </div>
                     <p className="text-sm text-gray-500">Farmer: {t.reservation?.farmer?.name}</p>
@@ -94,7 +94,7 @@ const ManageTransactions = () => {
                     {t.returnDate && <p className="text-sm text-gray-500">Returned: {format(new Date(t.returnDate), 'MMM d, yyyy')}</p>}
                   </div>
                   {t.status === 'released' && (
-                    <Button size="sm" variant="outline" onClick={() => setReturnModal(t.id)}>Record Return</Button>
+                    <Button size="sm" variant="outline" onClick={() => setReturnModal(t.id)} className="w-full sm:w-auto">Record Return</Button>
                   )}
                 </div>
               </div>

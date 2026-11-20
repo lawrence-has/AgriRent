@@ -53,10 +53,10 @@ const ManageReservations = () => {
         <div className="space-y-3">
           {data.reservations.map((r) => (
             <div key={r.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold">{r.equipment?.name}</h3>
+                    <h3 className="min-w-0 truncate font-semibold">{r.equipment?.name}</h3>
                     <Badge label={r.status} />
                   </div>
                   <p className="text-sm text-gray-600">
@@ -70,13 +70,13 @@ const ManageReservations = () => {
                   </p>
                 </div>
 
-                <div className="flex flex-col gap-2 shrink-0">
+                <div className="flex flex-col gap-2 sm:shrink-0">
                   {/* Message farmer button */}
                   <Button
                     variant="secondary"
                     size="sm"
                     onClick={() => handleMessageFarmer(r.farmer)}
-                    className="flex items-center gap-1"
+                    className="w-full sm:w-auto"
                   >
                     <MessageSquare size={13} /> Message
                   </Button>

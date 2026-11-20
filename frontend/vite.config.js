@@ -2,11 +2,28 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const removeBrowserOrigin = (proxy) => {
+  proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'));
+};
+
+const localBackendProxy = {
+  '/api': {
+    target: 'http://localhost:5000',
+    changeOrigin: true,
+    configure: removeBrowserOrigin,
+  },
+  '/uploads': { target: 'http://localhost:5000', changeOrigin: true },
+  '/socket.io': { target: 'http://localhost:5000', changeOrigin: true, ws: true },
+};
+
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      devOptions: {
+        enabled: true,
+      },
       includeAssets: [
         'icons/icon-192.png',
         'icons/icon-512.png',
@@ -18,8 +35,8 @@ export default defineConfig({
         name: 'AgriRent',
         short_name: 'AgriRent',
         description: 'Agricultural Machinery Rental Platform for Local Farmers',
-        theme_color: '#16a34a',
-        background_color: '#ffffff',
+        theme_color: '#294331',
+        background_color: '#f5f4ee',
         display: 'standalone',
         orientation: 'portrait-primary',
         start_url: '/',
@@ -68,7 +85,9 @@ export default defineConfig({
       strategies: 'generateSW',
       workbox: {
         // Import our custom push/click handler into the generated SW
-        importScripts: ['sw-push-handler.js'],
+        // Use an origin-root URL so it resolves from both /sw.js and Vite's
+        // /dev-sw.js?dev-sw development worker URL.
+        importScripts: ['/sw-push-handler.js'],
         // ── App shell precaching ──────────────────────────────────
         // Precache all static assets built by Vite (JS, CSS, HTML, icons)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
@@ -78,7 +97,7 @@ export default defineConfig({
         clientsClaim: true,
 
         // Offline fallback: serve offline.html when navigation fails
-        navigateFallback: '/offline.html',
+        navigateFallback: '/index.html',
         navigateFallbackDenylist: [
           /^\/api\//,       // never intercept API calls
           /\/uploads\//,    // never intercept uploads
@@ -236,10 +255,13 @@ export default defineConfig({
   ],
 
   server: {
+    host: '0.0.0.0',
     port: 5173,
-    proxy: {
-      '/api': { target: 'http://localhost:5000', changeOrigin: true },
-      '/uploads': { target: 'http://localhost:5000', changeOrigin: true },
-    },
+    proxy: localBackendProxy,
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    proxy: localBackendProxy,
   },
 });

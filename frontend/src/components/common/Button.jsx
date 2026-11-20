@@ -9,10 +9,10 @@
 import { forwardRef } from 'react';
 
 const variants = {
-  primary:   'bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white',
-  secondary: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-800',
-  danger:    'bg-red-600 hover:bg-red-700 active:bg-red-800 text-white',
-  outline:   'border border-primary-600 text-primary-600 hover:bg-primary-50 active:bg-primary-100',
+  primary:   'bg-primary-600 hover:bg-primary-700 active:bg-primary-800 text-white shadow-sm shadow-primary-600/20 hover:shadow-md hover:shadow-primary-600/25',
+  secondary: 'bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-800 shadow-sm',
+  danger:    'bg-red-600 hover:bg-red-700 active:bg-red-800 text-white shadow-sm shadow-red-600/20',
+  outline:   'border border-primary-200 bg-white text-primary-700 hover:border-primary-300 hover:bg-primary-50 active:bg-primary-100',
   ghost:     'text-gray-600 hover:bg-gray-100 active:bg-gray-200',
 };
 
@@ -41,7 +41,8 @@ const Button = forwardRef(({
   as: Component,
   ...props
 }, ref) => {
-  const baseClass = `inline-flex items-center justify-center rounded-lg font-medium transition-colors
+  const baseClass = `inline-flex items-center justify-center rounded-xl font-semibold transition-all duration-200
+    hover:-translate-y-px active:translate-y-0 active:scale-[0.98]
     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2
     disabled:opacity-50 disabled:cursor-not-allowed
     ${variants[variant]} ${sizes[size]} ${className}`;

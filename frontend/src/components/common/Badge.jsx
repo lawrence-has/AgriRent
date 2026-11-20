@@ -1,23 +1,24 @@
 const colors = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  confirmed: 'bg-blue-100 text-blue-800',
-  active: 'bg-green-100 text-green-800',
-  completed: 'bg-gray-100 text-gray-800',
-  cancelled: 'bg-red-100 text-red-800',
-  available: 'bg-green-100 text-green-800',
-  rented: 'bg-orange-100 text-orange-800',
-  maintenance: 'bg-yellow-100 text-yellow-800',
-  archived: 'bg-gray-100 text-gray-600',
-  released: 'bg-blue-100 text-blue-800',
-  returned: 'bg-green-100 text-green-800',
-  farmer: 'bg-emerald-100 text-emerald-800',
-  owner: 'bg-indigo-100 text-indigo-800',
-  admin: 'bg-purple-100 text-purple-800',
+  pending: 'bg-[#fbf1dc] text-[#8a641e] border-[#eddbb4]',
+  confirmed: 'bg-[#e8f0f5] text-[#42637a] border-[#d1e0e9]',
+  active: 'bg-[#e9f1e4] text-[#45683b] border-[#d5e3cc]',
+  completed: 'bg-[#f0f0eb] text-[#666b60] border-[#e3e3dc]',
+  cancelled: 'bg-[#f8e9e5] text-[#984d3b] border-[#efd3ca]',
+  available: 'bg-[#e9f1e4] text-[#45683b] border-[#d5e3cc]',
+  rented: 'bg-[#f8eddf] text-[#94602c] border-[#ead8bd]',
+  maintenance: 'bg-[#fbf1dc] text-[#8a641e] border-[#eddbb4]',
+  archived: 'bg-[#f0f0eb] text-[#666b60] border-[#e3e3dc]',
+  released: 'bg-[#e8f0f5] text-[#42637a] border-[#d1e0e9]',
+  returned: 'bg-[#e9f1e4] text-[#45683b] border-[#d5e3cc]',
+  farmer: 'bg-[#e9f1e4] text-[#45683b] border-[#d5e3cc]',
+  owner: 'bg-[#f5eddf] text-[#86633a] border-[#e9dcc5]',
+  admin: 'bg-[#eeeaf4] text-[#65517c] border-[#ded5eb]',
 };
 
 const Badge = ({ label, className = '' }) => (
-  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-    ${colors[label] || 'bg-gray-100 text-gray-800'} ${className}`}>
+  <span className={`inline-flex items-center gap-1.5 border px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize tracking-[0.01em]
+    ${colors[label] || 'bg-[#f0f0eb] text-[#666b60] border-[#e3e3dc]'} ${className}`}>
+    <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" aria-hidden="true" />
     {label}
   </span>
 );

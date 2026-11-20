@@ -51,17 +51,18 @@ const AdminDashboard = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Platform-wide overview and management.</p>
+      <div className="agri-hero px-5 py-6 sm:px-8 sm:py-8">
+        <p className="agri-eyebrow">AgriRent platform <span className="mx-1.5 text-[#d7bd78]">✦</span> Administration</p>
+        <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-[#fffdf5]">The whole operation, at a glance.</h1>
+        <p className="text-sm text-white/70 mt-2">Platform-wide overview and management.</p>
       </div>
 
       {/* Primary stats — 2 cols mobile, 4 desktop */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <StatsCard title="Total Users" value={data?.totalUsers ?? 0} icon={Users} color="blue" />
-        <StatsCard title="Total Equipment" value={data?.totalEquipment ?? 0} icon={Tractor} />
-        <StatsCard title="Total Reservations" value={data?.totalReservations ?? 0} icon={ClipboardList} color="purple" />
-        <StatsCard title="Active Rentals" value={data?.activeRentals ?? 0} icon={CheckCircle} color="green" />
+        <StatsCard title="Total Users" value={data?.totalUsers ?? 0} icon={Users} color="blue" to="/admin/users" />
+        <StatsCard title="Total Equipment" value={data?.totalEquipment ?? 0} icon={Tractor} to="/admin/equipment" />
+        <StatsCard title="Total Reservations" value={data?.totalReservations ?? 0} icon={ClipboardList} color="purple" to="/admin/reservations" />
+        <StatsCard title="Active Rentals" value={data?.activeRentals ?? 0} icon={CheckCircle} color="green" to="/admin/reservations" />
       </div>
 
       {/* Secondary stats from C5 updated backend */}
@@ -72,18 +73,21 @@ const AdminDashboard = () => {
           icon={Clock}
           color="orange"
           subtitle={data?.pendingReservations > 0 ? 'Awaiting owner action' : undefined}
+          to="/admin/reservations"
         />
         <StatsCard
           title="Completed Rentals"
           value={data?.completedRentals ?? 0}
           icon={Flag}
           color="blue"
+          to="/admin/reservations"
         />
         <StatsCard
           title="Cancellations"
           value={((data?.totalReservations ?? 0) - (data?.activeRentals ?? 0) - (data?.completedRentals ?? 0) - (data?.pendingReservations ?? 0))}
           icon={AlertCircle}
           color="orange"
+          to="/admin/reservations"
         />
       </div>
 
@@ -98,7 +102,7 @@ const AdminDashboard = () => {
           <Link
             key={to}
             to={to}
-            className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all"
+            className="group rounded-2xl border border-[#e7e5da] bg-[#fffefa]/90 p-4 shadow-[0_9px_24px_rgba(35,49,34,0.045)] transition-all hover:-translate-y-1 hover:border-primary-200 hover:bg-white hover:shadow-[0_18px_36px_rgba(35,49,34,0.10)]"
           >
             <p className="text-sm font-semibold text-gray-800">{label}</p>
             <p className="text-xs text-gray-500 mt-0.5">{desc}</p>

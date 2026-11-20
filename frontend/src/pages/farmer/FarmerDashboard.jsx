@@ -6,8 +6,10 @@ import StatsCard from '../../components/dashboard/StatsCard';
 import RecentActivity from '../../components/dashboard/RecentActivity';
 import Spinner from '../../components/common/Spinner';
 import Button from '../../components/common/Button';
+import useAuthStore from '../../store/authStore';
 
 const FarmerDashboard = () => {
+  const user = useAuthStore((state) => state.user);
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['farmer-stats'],
     queryFn: () => getFarmerStats().then((r) => r.data),
@@ -55,12 +57,13 @@ const FarmerDashboard = () => {
   return (
     <div className="space-y-6">
       {/* Header with quick action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="agri-hero px-5 py-6 sm:px-8 sm:py-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Welcome back! Here's your rental overview.</p>
+          <p className="agri-eyebrow">Farmer workspace <span className="mx-1.5 text-[#d7bd78]">✦</span> Field overview</p>
+          <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold tracking-tight text-[#fffdf5]">Your farm, in motion.</h1>
+          <p className="text-sm text-white/70 mt-2">Welcome back{user?.name ? `, ${user.name.split(' ')[0]}` : ''}. Here's your rental overview.</p>
         </div>
-        <Button as={Link} to="/farmer/browse" className="shrink-0">
+        <Button as={Link} to="/farmer/browse" className="shrink-0 border border-white/30 bg-white/10 text-white shadow-none hover:border-white/50 hover:bg-white/20">
           <Tractor size={15} /> Browse Equipment
         </Button>
       </div>
@@ -72,12 +75,14 @@ const FarmerDashboard = () => {
           value={data?.totalReservations ?? 0}
           icon={ClipboardList}
           color="primary"
+          to="/farmer/reservations"
         />
         <StatsCard
           title="Active Rentals"
           value={data?.activeRentals ?? 0}
           icon={Tractor}
           color="green"
+          to="/farmer/rentals"
         />
         <StatsCard
           title="Pending"
@@ -85,6 +90,7 @@ const FarmerDashboard = () => {
           icon={Clock}
           color="orange"
           subtitle={data?.pendingReservations > 0 ? 'Awaiting confirmation' : undefined}
+          to="/farmer/reservations"
         />
         <StatsCard
           title="Total Spent"
@@ -104,7 +110,7 @@ const FarmerDashboard = () => {
           <Link
             key={to}
             to={to}
-            className="bg-white border border-gray-100 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all"
+            className="group rounded-2xl border border-[#e7e5da] bg-[#fffefa]/90 p-4 shadow-[0_9px_24px_rgba(35,49,34,0.045)] transition-all hover:-translate-y-1 hover:border-primary-200 hover:bg-white hover:shadow-[0_18px_36px_rgba(35,49,34,0.10)]"
           >
             <p className="text-sm font-semibold text-gray-800">{label}</p>
             <p className="text-xs text-gray-500 mt-0.5">{desc}</p>

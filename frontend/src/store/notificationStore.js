@@ -3,6 +3,7 @@ import { create } from 'zustand';
 const useNotificationStore = create((set) => ({
   notifications: [],
   unreadCount: 0,
+  reset: () => set({ notifications: [], unreadCount: 0 }),
 
   // Called when HTTP fetch returns fresh data
   setNotifications: (notifications, unreadCount) =>

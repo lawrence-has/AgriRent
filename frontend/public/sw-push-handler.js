@@ -19,13 +19,23 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title || 'AgriRent';
+  const notificationData = {
+    ...(payload.data || {}),
+    type: payload.type || payload.data?.type || 'system',
+    url: payload.data?.url || payload.url || '/notifications',
+    notificationId: payload.notificationId || payload.data?.notificationId,
+  };
   const options = {
     body: payload.message || payload.body || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192-maskable.png',
-    data: payload.data || payload,
-    tag: payload.type || 'agrirent-notification',  // group same-type notifications
-    renotify: true,  // re-alert even if same tag
+    data: notificationData,
+    // Keep each alert distinct so rapid chat/reservation events are not collapsed.
+    tag: notificationData.notificationId
+      ? `agrirent-${notificationData.notificationId}`
+      : `agrirent-${notificationData.type}-${Date.now()}`,
+    renotify: true,
+    requireInteraction: true,
     vibrate: [200, 100, 200],
   };
 
@@ -40,23 +50,10 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const data = event.notification.data || {};
-  const type = data.type || 'system';
-  const reservationId = data.reservationId;
-  const transactionId = data.transactionId;
-
-  // Determine target URL based on notification type
-  let targetUrl = '/';
-  if (type === 'reservation' && reservationId) {
-    // Navigate to the reservation detail — role-agnostic,
-    // the app's router will redirect based on user role
-    targetUrl = `/farmer/reservations/${reservationId}`;
-  } else if (type === 'transaction' && transactionId) {
-    targetUrl = '/farmer/rentals';
-  } else if (type === 'chat') {
-    targetUrl = '/chat';
-  } else if (type === 'reservation') {
-    targetUrl = '/farmer/reservations';
-  }
+  // Only same-origin app paths are accepted from the push payload.
+  const targetUrl = typeof data.url === 'string' && data.url.startsWith('/') && !data.url.startsWith('//')
+    ? data.url
+    : '/notifications';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {

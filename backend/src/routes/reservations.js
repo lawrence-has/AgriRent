@@ -178,12 +178,26 @@ router.post(
     body('endDate').notEmpty().withMessage('endDate is required')
       .isISO8601().withMessage('endDate must be a valid date (YYYY-MM-DD)'),
     body('notes').optional().trim().isLength({ max: 1000 }).withMessage('Notes must be 1000 characters or less'),
+    body('idempotencyKey').optional().isString().isLength({ min: 1, max: 100 })
+      .withMessage('idempotencyKey must be between 1 and 100 characters'),
   ],
   handleValidation,
   async (req, res, next) => {
     const t = await sequelize.transaction();
     try {
-      const { equipmentId, startDate, endDate, notes } = req.body;
+      const { equipmentId, startDate, endDate, notes, idempotencyKey } = req.body;
+
+      if (idempotencyKey) {
+        const existing = await Reservation.findOne({
+          where: { farmerId: req.user.id, idempotencyKey },
+          paranoid: false,
+          transaction: t,
+        });
+        if (existing) {
+          await t.commit();
+          return res.json({ success: true, reservation: existing, duplicate: true });
+        }
+      }
 
       // ── Date validation ────────────────────────────────────────
       const start = parseISO(startDate);
@@ -270,6 +284,7 @@ router.post(
         totalCost,
         notes: notes?.trim() || null,
         status: 'pending',
+        idempotencyKey: idempotencyKey || null,
       }, { transaction: t });
 
       await t.commit();
@@ -287,7 +302,26 @@ router.post(
 
       res.status(201).json({ success: true, reservation });
     } catch (error) {
-      await t.rollback();
+      if (!t.finished) {
+        try {
+          await t.rollback();
+        } catch (rollbackError) {
+          return next(rollbackError);
+        }
+      }
+      if (error.name === 'SequelizeUniqueConstraintError' && req.body.idempotencyKey) {
+        try {
+          const existing = await Reservation.findOne({
+            where: { farmerId: req.user.id, idempotencyKey: req.body.idempotencyKey },
+            paranoid: false,
+          });
+          if (existing) {
+            return res.json({ success: true, reservation: existing, duplicate: true });
+          }
+        } catch (lookupError) {
+          return next(lookupError);
+        }
+      }
       next(error);
     }
   }

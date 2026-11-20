@@ -76,7 +76,7 @@ const UserManagement = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
           {statsData && (
@@ -85,7 +85,7 @@ const UserManagement = () => {
             </p>
           )}
         </div>
-        <Button onClick={() => setShowCreate(true)}>
+        <Button onClick={() => setShowCreate(true)} className="w-full sm:w-auto">
           <UserPlus size={15} /> Add User
         </Button>
       </div>

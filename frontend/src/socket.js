@@ -8,7 +8,16 @@ export const initSocket = (token) => {
     socket = null;
   }
 
-  const url = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+  const configuredUrl = import.meta.env.VITE_SOCKET_URL;
+  const isLocalHost = (hostname) => ['localhost', '127.0.0.1'].includes(hostname);
+  const configuredHost = configuredUrl
+    ? new URL(configuredUrl, window.location.origin).hostname
+    : null;
+  const url = configuredUrl && !isLocalHost(configuredHost)
+    ? configuredUrl
+    : isLocalHost(window.location.hostname)
+      ? configuredUrl || `http://${window.location.hostname}:5000`
+      : window.location.origin;
 
   socket = io(url, {
     auth: { token },

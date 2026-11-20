@@ -1,6 +1,6 @@
 import { useForm } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
-import { User, Camera, Bell, BellOff, AlertTriangle, CheckCircle } from 'lucide-react';
+import { User, Camera, Bell, BellOff, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { updateMe } from '../api/auth';
 import useAuthStore from '../store/authStore';
@@ -16,9 +16,30 @@ const ProfilePage = () => {
     isLoading: pushLoading,
     permissionState,
     error: pushError,
+    requiresSecureContext,
     subscribe,
     unsubscribe,
+    repairSubscription,
+    sendTestNotification,
   } = usePushNotification();
+
+  const handleTestNotification = async () => {
+    try {
+      const result = await sendTestNotification();
+      toast.success(result.message);
+    } catch {
+      // The hook displays the delivery error in the push notification panel.
+    }
+  };
+
+  const handleRepairPush = async () => {
+    try {
+      const result = await repairSubscription();
+      toast.success(result.message || 'Push connection repaired and tested.');
+    } catch {
+      // The hook displays the repair error in the push notification panel.
+    }
+  };
 
   const {
     register,
@@ -49,8 +70,12 @@ const ProfilePage = () => {
   });
 
   return (
-    <div className="max-w-xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="mb-1">
+        <p className="agri-eyebrow !text-[#718365]">Account settings</p>
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-[#26382a]">My Profile</h1>
+        <p className="mt-1 text-sm text-[#7a8074]">Manage your details and notification preferences.</p>
+      </div>
 
       {/* Avatar card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex items-center gap-5">
@@ -156,6 +181,9 @@ const ProfilePage = () => {
                 ? 'You will receive push notifications on this device even when the app is closed.'
                 : 'Get notified about reservations, transactions, and messages — even when the app is closed.'}
             </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Enable notifications separately in each browser or device. Devices outside this computer need an HTTPS app address.
+            </p>
           </div>
         </div>
 
@@ -164,8 +192,9 @@ const ProfilePage = () => {
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2 text-sm">
             <AlertTriangle size={15} className="text-yellow-600 shrink-0 mt-0.5" aria-hidden="true" />
             <p className="text-yellow-800">
-              Push notifications are not supported in your current browser.
-              Try Chrome, Edge, or Firefox for full support.
+              {requiresSecureContext
+                ? 'Push notifications require a secure HTTPS connection. Use an HTTPS address on your laptop or device (localhost is supported for local testing).'
+                : 'Push notifications are not supported in your current browser. Try a current version of Chrome, Edge, or Firefox.'}
             </p>
           </div>
         )}
@@ -223,17 +252,39 @@ const ProfilePage = () => {
         {isSupported && permissionState !== 'denied' && (
           <div>
             {isSubscribed ? (
-              <Button
-                variant="secondary"
-                onClick={unsubscribe}
-                loading={pushLoading}
-                disabled={pushLoading}
-                className="w-full sm:w-auto"
-                aria-label="Disable push notifications"
-              >
-                <BellOff size={15} />
-                {pushLoading ? 'Disabling...' : 'Disable Notifications'}
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleRepairPush}
+                  loading={pushLoading}
+                  disabled={pushLoading}
+                  className="w-full sm:w-auto"
+                  aria-label="Repair push notifications on this device"
+                >
+                  <RefreshCw size={15} />
+                  {pushLoading ? 'Repairing...' : 'Repair Connection'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={unsubscribe}
+                  loading={pushLoading}
+                  disabled={pushLoading}
+                  className="w-full sm:w-auto"
+                  aria-label="Disable push notifications"
+                >
+                  <BellOff size={15} />
+                  {pushLoading ? 'Disabling...' : 'Disable Notifications'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleTestNotification}
+                  disabled={pushLoading}
+                  className="w-full sm:w-auto"
+                >
+                  <Bell size={15} />
+                  Send Test Notification
+                </Button>
+              </div>
             ) : (
               <Button
                 onClick={subscribe}

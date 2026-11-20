@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { differenceInDays, parseISO, isAfter, startOfDay } from 'date-fns';
@@ -29,6 +29,7 @@ const EquipmentDetailPage = () => {
   const [imgIdx, setImgIdx] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [dateError, setDateError] = useState('');
+  const reservationRequestRef = useRef(null);
 
   // Track online/offline state
   useEffect(() => {
@@ -52,6 +53,7 @@ const EquipmentDetailPage = () => {
   // Check if this equipment already has a pending queued reservation
   const hasPendingQueuedReservation = queue.some(
     (item) =>
+      Number(item.userId) === Number(user?.id) &&
       item.data.equipmentId === parseInt(id) &&
       ['queued', 'syncing'].includes(item.status)
   );
@@ -61,6 +63,7 @@ const EquipmentDetailPage = () => {
     mutationFn: createReservation,
     onSuccess: () => {
       toast.success('Reservation submitted successfully!');
+      reservationRequestRef.current = null;
       queryClient.invalidateQueries({ queryKey: ['my-reservations'] });
       queryClient.invalidateQueries({ queryKey: ['availability', id] });
       navigate('/farmer/reservations');
@@ -131,10 +134,19 @@ const EquipmentDetailPage = () => {
       endDate,
       notes: notes.trim() || undefined,
     };
+    const fingerprint = JSON.stringify(reservationData);
+    if (reservationRequestRef.current?.fingerprint !== fingerprint) {
+      reservationRequestRef.current = {
+        fingerprint,
+        key: window.crypto?.randomUUID?.() ||
+          `reservation_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      };
+    }
+    reservationData.idempotencyKey = reservationRequestRef.current.key;
 
     if (!isOnline) {
       // Offline: queue the reservation
-      const key = enqueue(reservationData);
+      const key = enqueue(reservationData, user.id);
       if (!key) {
         toast.error('You already have a pending reservation for these dates.');
         return;
@@ -203,7 +215,7 @@ const EquipmentDetailPage = () => {
             )}
           </div>
           {equipment.images?.length > 1 && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {equipment.images.map((img, i) => (
                 <button
                   key={i}
