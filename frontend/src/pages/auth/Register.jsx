@@ -9,7 +9,7 @@ import Button from '../../components/common/Button';
 import AuthBrandPanel from '../../components/auth/AuthBrandPanel';
 
 const Register = () => {
-  const { register, handleSubmit, formState: { errors } } = useForm();
+  const { register, handleSubmit, getValues, formState: { errors } } = useForm();
   const { login: setAuth } = useAuthStore();
   const navigate = useNavigate();
 
@@ -36,7 +36,14 @@ const Register = () => {
           <p className="text-[#7c8174] text-sm mt-2">Bring your farm or equipment business to AgriRent.</p>
         </div>
 
-        <form onSubmit={handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
+        <form
+          onSubmit={handleSubmit((formData) => {
+            const data = { ...formData };
+            delete data.confirmPassword;
+            mutation.mutate(data);
+          })}
+          className="space-y-4"
+        >
           <Input
             label="Full Name"
             placeholder="Juan dela Cruz"
@@ -60,8 +67,20 @@ const Register = () => {
             label="Password"
             type="password"
             placeholder="Min. 6 characters"
+            autoComplete="new-password"
             error={errors.password?.message}
             {...register('password', { required: 'Password is required', minLength: { value: 6, message: 'Min 6 characters' } })}
+          />
+          <Input
+            label="Confirm Password"
+            type="password"
+            placeholder="Re-enter your password"
+            autoComplete="new-password"
+            error={errors.confirmPassword?.message}
+            {...register('confirmPassword', {
+              required: 'Please confirm your password',
+              validate: (value) => value === getValues('password') || 'Passwords do not match',
+            })}
           />
 
           <div className="flex flex-col gap-1">
