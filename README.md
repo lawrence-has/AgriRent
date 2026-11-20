@@ -137,10 +137,12 @@ The root `Dockerfile` builds the Vite frontend and serves it from the Express se
 
 1. Push this repository to GitHub and create a Railway project from that repository. Use the repository root as the service root so Railway detects the root `Dockerfile`.
 2. Add a MySQL database service to the same Railway project.
-3. In the web service, set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` from the MySQL service's private connection variables. Set `JWT_SECRET` to a newly generated random secret and set `NODE_ENV=production`.
+3. In the web service's Variables tab, reference the MySQL service's private variables (replace `MySQL` with the exact Railway service name): `DB_HOST=${{MySQL.MYSQLHOST}}`, `DB_PORT=${{MySQL.MYSQLPORT}}`, `DB_NAME=${{MySQL.MYSQLDATABASE}}`, `DB_USER=${{MySQL.MYSQLUSER}}`, and `DB_PASSWORD=${{MySQL.MYSQLPASSWORD}}`. Set `JWT_SECRET` to a newly generated random secret and set `NODE_ENV=production`.
 4. Generate a public domain for the web service, then set `CLIENT_URL` to that full HTTPS origin (for example, `https://your-app.up.railway.app`).
 5. Attach a Railway volume to the web service at `/app/backend/uploads` so uploaded equipment, profile, and transaction images persist after redeployments.
 6. Configure the web-service healthcheck path as `/api/health`, then deploy. The backend's existing startup code synchronizes the database tables.
 7. To enable push notifications, also configure `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_EMAIL`. They can be left unset initially if push is not needed.
 
 The frontend uses same-origin API and Socket.IO URLs by default, so production does not need `VITE_API_URL` or `VITE_SOCKET_URL`. Keep secrets in Railway variables; do not commit `.env` files. Existing local uploads and database records are not copied by the Docker build and must be migrated separately if they need to appear in production.
+
+If the backend logs `SequelizeConnectionRefusedError`, verify that the MySQL service is running in the same Railway environment and that the backend's `DB_HOST`/`DB_PORT` reference that service's private `MYSQLHOST`/`MYSQLPORT`. The backend also accepts Railway's `MYSQLHOST`, `MYSQLPORT`, `MYSQLDATABASE`, `MYSQLUSER`, and `MYSQLPASSWORD` variables directly, and retries temporary database startup connection refusals.

@@ -7,6 +7,35 @@ const { initSocket } = require('./socket');
 
 const PORT = process.env.PORT || 5000;
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTemporaryDatabaseError = (error) => {
+  const codes = [
+    error?.code,
+    error?.parent?.code,
+    error?.original?.code,
+    ...(error?.parent?.errors || []).map((item) => item.code),
+    ...(error?.original?.errors || []).map((item) => item.code),
+  ];
+  return codes.some((code) => ['ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN'].includes(code));
+};
+
+const connectToDatabase = async () => {
+  const maxAttempts = 8;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await sequelize.authenticate();
+      console.log('✅ Database connected');
+      return;
+    } catch (error) {
+      if (!isTemporaryDatabaseError(error) || attempt === maxAttempts) throw error;
+      const delay = Math.min(1500 * (2 ** (attempt - 1)), 8000);
+      console.error(`[Database] Cannot reach ${sequelize.config.host}:${sequelize.config.port} (attempt ${attempt}/${maxAttempts}); retrying in ${Math.ceil(delay / 1000)}s.`);
+      await wait(delay);
+    }
+  }
+};
+
 // ── Global error guards ──────────────────────────────────────────
 // Prevent the process from crashing on unhandled async errors
 process.on('unhandledRejection', (reason) => {
@@ -40,8 +69,7 @@ initSocket(io);
 // Sync DB and start server
 const start = async () => {
   try {
-    await sequelize.authenticate();
-    console.log('✅ Database connected');
+    await connectToDatabase();
     await sequelize.sync({ alter: true });
     console.log('✅ Database synced');
     server.listen(PORT, () => {
